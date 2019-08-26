@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 
 # Single converter functions: transform one column to sqlite value
 # stored as that same column.
@@ -296,16 +297,40 @@ COLUMNS = {
     '_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     }
 
-if __name__ == "__main__":
+
+
+def main(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--update', '-u', action='store_true')
-    parser.add_argument('db')
-    parser.add_argument('sacct_filter', nargs='*')
-    args = parser.parse_args()
+    parser.add_argument('db', help="Database filename to create or update")
+    parser.add_argument('sacct_filter', nargs='*',
+                        help="sacct options to filter jobs.  For example, one "
+                             "would usually give '-a' or '-S 2019-08-01' "
+                             "here, for example")
+    parser.add_argument('--update', '-u', action='store_true',
+                        help="If given, don't delete existing database and "
+                             "instead insert or update rows")
+    args = parser.parse_args(argv)
 
     if not args.update and os.path.exists(args.db):
         os.unlink(args.db)
     db = sqlite3.connect(args.db)
+
+    slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
+
+
+
+def slurm2sql(db, sacct_filter=['-a'], update=False):
+    """Import one call of sacct to a sqlite database.
+
+    db:
+    open sqlite3 database file object.
+
+    sacct_filter:
+    filter for sacct, list of arguments.  This should only be row
+    filters, such as ['-a'], ['-S' '2019-08-01'], and so on.  The
+    argument should be a list.  You can't currently filter what columns
+    are selected.
+    """
     create_columns = ', '.join(c.strip('_') for c in COLUMNS)
     create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
@@ -316,8 +341,8 @@ if __name__ == "__main__":
     slurm_cols = tuple(c for c in COLUMNS.keys() if not c.startswith('_'))
     cmd = ['sacct', '-o', ','.join(slurm_cols), '-P', '--units=K',
            #'--allocations',  # no job steps, only total jobs, but doesn't show used resources.
-           *args.sacct_filter]
-    print(' '.join(cmd))
+           *sacct_filter]
+    #print(' '.join(cmd))
     p = subprocess.Popen(cmd,
                          stdout=subprocess.PIPE, universal_newlines=True)
 
@@ -341,7 +366,7 @@ if __name__ == "__main__":
         def insert(processed_line_):
             #print(processed_line)
             c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
-                'OR REPLACE' if args.update else '',
+                'OR REPLACE' if update else '',
                 ','.join(processed_line_.keys()),
                 ','.join(['?']*len(processed_line_))),
                 tuple(processed_line_.values()))
@@ -352,6 +377,9 @@ if __name__ == "__main__":
 
         insert(processed_line)
 
-
     db.commit()
 
+
+
+if __name__ == "__main__":
+    exit(main(sys.argv[1:]))
