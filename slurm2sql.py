@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import json
 import os
@@ -5,6 +7,7 @@ import re
 import sqlite3
 import subprocess
 
+# Single converter functions: transform one column to sqlite value.
 def nullint(x):
     """int or None"""
     return int(x) if x else None
@@ -34,7 +37,13 @@ def slurmmem(x):
     x = x.strip('Knc')
     return float(x)//1024
 
+# Row converter fuctions which need *all* values to convert.  Classes
+# with one method, 'calc', which takes the whole row (a dict) and
+# converts it to a sqlite value.  The only point of the class is to be
+# able to easily distinguish the function from the column functions
+# above.
 class linefunc(object):
+    """Base class for all converter functions"""
     linefunc = True
 class slurmMemNode(linefunc):
     @staticmethod
@@ -85,10 +94,26 @@ class slurmGPUCount(linefunc):
     @staticmethod
     def calc(row):
         comment = row['Comment']
-        if not comment.strip():  return
+        if not comment.strip():        return
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
         return comment['ngpu']
+class slurmJobIDParent(linefunc):
+    """The JobID without any . or _"""
+    @staticmethod
+    def calc(row):
+        return int(row['JobID'].split('_')[0].split('.')[0])
+class slurmArrayID(linefunc):
+    @staticmethod
+    def calc(row):
+        if '_' not in row['JobID']:  return
+        if '[' in row['JobID']:      return
+        return int(row['JobID'].split('_')[1].split('.')[0])
+class slurmStepID(linefunc):
+    @staticmethod
+    def calc(row):
+        if '.' not in row['JobID']:  return
+        return row['JobID'].split('.')[-1]
 
 #class slurmMemEff(linefunc):
 #    #https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
@@ -112,30 +137,39 @@ class slurmCPUEff(linefunc):
         cpueff = slurmtime(row['TotalCPU']) / (elapsed * int(row['NCPUS']))
         return cpueff
 
+# All defined columns and their respective converter functions.
+# If it begins in a underscore, this is not a Slurm DB field, it is
+# computed.  Don't get it from sacct, but add it to our database
+# without the underscore.
 COLUMNS = {
+    # Basic job metadata
     'JobID': str,
     'JobIDRaw': str,
     'JobName': str,
+    '_ArrayID': slurmArrayID,
+    '_StepID': slurmStepID,
+    '_JobIDParent': slurmJobIDParent,
     'User': str,
+
+    # Time limit and runtime info
+    'State': str,
+    'Timelimit': slurmtime,
+    'Elapsed': slurmtime,
     'Start': str,
     'End': str,
-
-    'Timelimit': slurmtime,
-    'State': str,
-    'Elapsed': slurmtime,
     'Partition': str,
+
+    # Miscelaneous requested resources
     #'ReqTRES': str,
     'ReqGRES': str,
-    #'Comment'
     'NTasks': nullint,
     '_ReqGPU': slurmReqGPU,
-
+    'NNodes': nullint,
+    'AllocNodes': nullint,
     #'AllocGRES'
     #'AllocTRES'
 
-    'NNodes': nullint,
-    'AllocNodes': nullint,
-
+    # CPU related
     'NCPUS': nullint,
     'CPUTime': slurmtime,   # = Elapsed * NCPU    (= CPUTimeRaw)  (not how much used)
     'TotalCPU': slurmtime,  # = Elapsed * NCPU * efficiency
@@ -144,12 +178,14 @@ COLUMNS = {
     'AllocCPUS': nullint,
     '_CPUEff': slurmCPUEff,
 
+    # Memory related
     'ReqMem': slurmMemNode,
     '_ReqMemType': slurmMemType,
     '_ReqMemRaw': slurmMemRaw,
     'MaxRSS': slurmmem,
     'AveRSS': slurmmem,
 
+    # GPU related
     'Comment': nullstr,
     '_GPUMem': slurmGPUMem,
     '_GPUUtil': slurmGPUUtil,
@@ -197,7 +233,8 @@ if __name__ == "__main__":
                                          else COLUMNS[k].calc(line))
                           for k in COLUMNS.keys()}
         #print(processed_line)
-        c.execute('INSERT INTO slurm (%s) VALUES (%s)'%(
+        c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
+            'OR REPLACE' if args.update else '',
             ','.join(processed_line.keys()),
             ','.join(['?']*len(processed_line))),
             tuple(processed_line.values()))
