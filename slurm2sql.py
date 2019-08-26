@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
 import argparse
+import datetime
 import json
 import os
 import re
 import sqlite3
 import subprocess
 
-# Single converter functions: transform one column to sqlite value.
+# Single converter functions: transform one column to sqlite value
+# stored as that same column.
 def nullint(x):
     """int or None"""
     return int(x) if x else None
@@ -15,6 +17,12 @@ def nullint(x):
 def nullstr(x):
     """str or None"""
     return str(x) if x else None
+
+def timestamp(x):
+    """Timestamp in local time, converted to unixtime"""
+    if not x:           return None
+    if x == 'Unknown':  return None
+    return datetime.datetime.strptime(x, '%Y-%m-%dT%H:%M:%S').timestamp()
 
 def slurmtime(x):
     """Parse slurm time of format [dd-[hh:]]mm:ss"""
@@ -35,8 +43,9 @@ def slurmmem(x):
     """Memory, removing 'n' or 'c' at end, in KB"""
     if not x:  return None
     x = x.strip('nc')
-    return float_bytes(x)//1024
+    return float_bytes(x)
 
+# Converting kibi/mibi, etc units to numbers
 def unit_value(unit):
     """Convert a unit to its value, e.g. 'K'-->1024, 'M'-->1048576"""
     if unit is None: unit = '_'
@@ -44,6 +53,7 @@ def unit_value(unit):
 
 def float_bytes(x, convert=float):
     """Convert a float with unit (K,M, etc) to value"""
+    if not x:  return None
     unit = x[-1].lower()
     if unit in 'kmgtpezy':
         val = x[:-1]
@@ -51,6 +61,7 @@ def float_bytes(x, convert=float):
         unit = '_'
         val = x
     return convert(val) * unit_value(unit)
+
 def int_bytes(x):
     return float_bytes(x, convert=lambda x: int(float(x)))
 
@@ -62,7 +73,26 @@ def int_bytes(x):
 class linefunc(object):
     """Base class for all converter functions"""
     linefunc = True
+
+# Submit, start, and end times as unixtimes
+class slurmSubmitTS(linefunc):
+    @staticmethod
+    def calc(row):
+        return timestamp(row['Submit'])
+
+class slurmStartTS(linefunc):
+    @staticmethod
+    def calc(row):
+        return timestamp(row['Start'])
+
+class slurmEndTS(linefunc):
+    @staticmethod
+    def calc(row):
+        return timestamp(row['End'])
+
+# Memory stuff
 class slurmMemNode(linefunc):
+    """Memory per node"""
     @staticmethod
     def calc(row):
         reqmem = row['ReqMem']
@@ -71,7 +101,9 @@ class slurmMemNode(linefunc):
             return slurmmem(reqmem) * int(row['NCPUS']) / int(row['NNodes'])
         if reqmem.endswith('n'):
             return slurmmem(reqmem)
+
 class slurmMemType(linefunc):
+    """Memory type: 'n' per node, 'c' per core"""
     @staticmethod
     def calc(row):
         reqmem = row['ReqMem']
@@ -79,10 +111,14 @@ class slurmMemType(linefunc):
         if reqmem.endswith('n'):  return 'n'
         if reqmem.endswith('c'):  return 'c'
         raise ValueError("Unknown memory type")
+
 class slurmMemRaw(linefunc):
+    """Raw value of ReqMem column, with 'c' or 'n' suffix"""
     @staticmethod
     def calc(row):
         return row['ReqMem']
+
+# GPU stuff
 class slurmReqGPU(linefunc):
     @staticmethod
     def calc(row):
@@ -91,6 +127,7 @@ class slurmReqGPU(linefunc):
         m = re.search('gpu:(\d+)', gres)
         if m:
             return int(m.group(1))
+
 class slurmGPUMem(linefunc):
     @staticmethod
     def calc(row):
@@ -99,6 +136,7 @@ class slurmGPUMem(linefunc):
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
         return comment['gpu_mem_max']
+
 class slurmGPUUtil(linefunc):
     @staticmethod
     def calc(row):
@@ -107,6 +145,7 @@ class slurmGPUUtil(linefunc):
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
         return comment['gpu_util']/100.
+
 class slurmGPUCount(linefunc):
     @staticmethod
     def calc(row):
@@ -115,23 +154,28 @@ class slurmGPUCount(linefunc):
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
         return comment['ngpu']
+
+# Job ID related stuff
 class slurmJobIDParent(linefunc):
     """The JobID without any . or _"""
     @staticmethod
     def calc(row):
         return int(row['JobID'].split('_')[0].split('.')[0])
+
 class slurmArrayID(linefunc):
     @staticmethod
     def calc(row):
         if '_' not in row['JobID']:  return
         if '[' in row['JobID']:      return
         return int(row['JobID'].split('_')[1].split('.')[0])
+
 class slurmStepID(linefunc):
     @staticmethod
     def calc(row):
         if '.' not in row['JobID']:  return
         return row['JobID'].split('.')[-1]
 
+# Efficiency stuff
 #class slurmMemEff(linefunc):
 #    #https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
 #    @staticmethod
@@ -145,14 +189,18 @@ class slurmStepID(linefunc):
 #        else:
 #            reqmem = reqmem * int(row['NNodes'])
 #            pernode = True
+
 class slurmCPUEff(linefunc):
-    #https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
+    # This matches the seff tool currently:
+    # https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
     @staticmethod
     def calc(row):
-        elapsed = slurmtime(row['Elapsed'])
-        if not elapsed: return None
-        cpueff = slurmtime(row['TotalCPU']) / (elapsed * int(row['NCPUS']))
+        walltime = slurmtime(row['Elapsed'])
+        if not walltime: return None
+        cpueff = slurmtime(row['TotalCPU']) / (walltime * int(row['AllocCPUS']))
         return cpueff
+
+
 
 # All defined columns and their respective converter functions.
 # If it begins in a underscore, this is not a Slurm DB field, it is
@@ -174,8 +222,11 @@ COLUMNS = {
     'Timelimit': slurmtime,
     'Elapsed': slurmtime,
     'Submit': str,
+    '_SubmitTS': slurmSubmitTS,
     'Start': str,
     'End': str,
+    '_StartTS': slurmStartTS,
+    '_EndTS': slurmEndTS,
     'Partition': str,
     'ExitCode': str,
     'NodeList': str,
@@ -195,13 +246,13 @@ COLUMNS = {
     # CPU related
     'NCPUS': nullint,       # = AllocCPUS
     'ReqCPUS': nullint,
-    'CPUTime': slurmtime,   # = Elapsed * NCPU    (= CPUTimeRaw)  (not how much used)
-    'TotalCPU': slurmtime,  # = Elapsed * NCPU * efficiency
+    'AllocCPUS': nullint,
+    'CPUTime': slurmtime,   # = Elapsed * NCPUS    (= CPUTimeRaw)  (not how much used)
+    'TotalCPU': slurmtime,  # = Elapsed * NCPUS * efficiency
     'UserCPU': slurmtime,
     'SystemCPU': slurmtime,
-    'AllocCPUS': nullint,
     '_CPUEff': slurmCPUEff,
-    'MinCPU': str,
+    'MinCPU': slurmtime,
     'MinCPUNode': str,
     'MinCPUTask': str,
 
@@ -215,12 +266,12 @@ COLUMNS = {
     'MaxRSSTask': str,
 
     # Disk related
-    'AveDiskRead': str,
-    'AveDiskWrite': str,
-    'MaxDiskRead': str,
+    'AveDiskRead': int_bytes,
+    'AveDiskWrite': int_bytes,
+    'MaxDiskRead': int_bytes,
     'MaxDiskReadNode': str,
     'MaxDiskReadTask': str,
-    'MaxDiskWrite': str,
+    'MaxDiskWrite': int_bytes,
     'MaxDiskWriteNode': str,
     'MaxDiskWriteTask': str,
 
@@ -245,6 +296,7 @@ if __name__ == "__main__":
     create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
+    #db.execute('CREATE VIEW IF NOT EXISTS some_view as select *, (TotalCPU/Elapsed*NCPUS) from slurm;')
     c = db.cursor()
 
     slurm_cols = tuple(c for c in COLUMNS.keys() if not c.startswith('_'))
@@ -271,11 +323,21 @@ if __name__ == "__main__":
                                          if not hasattr(COLUMNS[k], 'linefunc')
                                          else COLUMNS[k].calc(line))
                           for k in COLUMNS.keys()}
-        #print(processed_line)
-        c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
-            'OR REPLACE' if args.update else '',
-            ','.join(processed_line.keys()),
-            ','.join(['?']*len(processed_line))),
-            tuple(processed_line.values()))
+
+        def insert(processed_line_):
+            #print(processed_line)
+            c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
+                'OR REPLACE' if args.update else '',
+                ','.join(processed_line_.keys()),
+                ','.join(['?']*len(processed_line_))),
+                tuple(processed_line_.values()))
+
+        #last_allocation = processed_line
+        #if last_line['JobIDParent'] == processed_line['JobIDParent'] and processed_line['StepID'] == 'batch':
+        #    last_allocation['
+
+        insert(processed_line)
+
+
     db.commit()
 
