@@ -34,8 +34,25 @@ def slurmtime(x):
 def slurmmem(x):
     """Memory, removing 'n' or 'c' at end, in KB"""
     if not x:  return None
-    x = x.strip('Knc')
-    return float(x)//1024
+    x = x.strip('nc')
+    return float_bytes(x)//1024
+
+def unit_value(unit):
+    """Convert a unit to its value, e.g. 'K'-->1024, 'M'-->1048576"""
+    if unit is None: unit = '_'
+    return 2**(10*'_kmgtpezy'.index(unit.lower()))
+
+def float_bytes(x, convert=float):
+    """Convert a float with unit (K,M, etc) to value"""
+    unit = x[-1].lower()
+    if unit in 'kmgtpezy':
+        val = x[:-1]
+    else:
+        unit = '_'
+        val = x
+    return convert(val) * unit_value(unit)
+def int_bytes(x):
+    return float_bytes(x, convert=lambda x: int(float(x)))
 
 # Row converter fuctions which need *all* values to convert.  Classes
 # with one method, 'calc', which takes the whole row (a dict) and
@@ -150,14 +167,20 @@ COLUMNS = {
     '_StepID': slurmStepID,
     '_JobIDParent': slurmJobIDParent,
     'User': str,
+    'Account': str,
 
     # Time limit and runtime info
     'State': str,
     'Timelimit': slurmtime,
     'Elapsed': slurmtime,
+    'Submit': str,
     'Start': str,
     'End': str,
     'Partition': str,
+    'ExitCode': str,
+    'NodeList': str,
+    'ReqNodes': int_bytes,
+    'Priority': nullint,
 
     # Miscelaneous requested resources
     #'ReqTRES': str,
@@ -170,20 +193,36 @@ COLUMNS = {
     #'AllocTRES'
 
     # CPU related
-    'NCPUS': nullint,
+    'NCPUS': nullint,       # = AllocCPUS
+    'ReqCPUS': nullint,
     'CPUTime': slurmtime,   # = Elapsed * NCPU    (= CPUTimeRaw)  (not how much used)
     'TotalCPU': slurmtime,  # = Elapsed * NCPU * efficiency
     'UserCPU': slurmtime,
     'SystemCPU': slurmtime,
     'AllocCPUS': nullint,
     '_CPUEff': slurmCPUEff,
+    'MinCPU': str,
+    'MinCPUNode': str,
+    'MinCPUTask': str,
 
     # Memory related
     'ReqMem': slurmMemNode,
     '_ReqMemType': slurmMemType,
     '_ReqMemRaw': slurmMemRaw,
-    'MaxRSS': slurmmem,
     'AveRSS': slurmmem,
+    'MaxRSS': slurmmem,
+    'MaxRSSNode': str,
+    'MaxRSSTask': str,
+
+    # Disk related
+    'AveDiskRead': str,
+    'AveDiskWrite': str,
+    'MaxDiskRead': str,
+    'MaxDiskReadNode': str,
+    'MaxDiskReadTask': str,
+    'MaxDiskWrite': str,
+    'MaxDiskWriteNode': str,
+    'MaxDiskWriteTask': str,
 
     # GPU related
     'Comment': nullstr,
@@ -219,9 +258,9 @@ if __name__ == "__main__":
     # We don't use the csv module because the csv can be malformed.
     # In particular, job name can include newlines.  TODO: handle job
     # names with newlines.
-    for i, line in enumerate(p.stdout):
+    for i, rawline in enumerate(p.stdout):
         if i == 0:  continue
-        line = line.split('|')
+        line = rawline.split('|')
         if len(line) < len(slurm_cols):
             continue
         line = dict(zip(slurm_cols, line))
