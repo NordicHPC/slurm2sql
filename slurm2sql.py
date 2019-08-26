@@ -353,9 +353,8 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
     are selected.
     """
     create_columns = ', '.join(c.strip('_') for c in COLUMNS)
-    #create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE ON CONFLICT REPLACE')
+    create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
-    db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_slurm_JobIDRaw ON slurm (JobIDRaw)')
     #db.execute('CREATE VIEW IF NOT EXISTS some_view as select *, (TotalCPU/Elapsed*NCPUS) from slurm;')
     c = db.cursor()
 
