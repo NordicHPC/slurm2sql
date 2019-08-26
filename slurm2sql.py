@@ -151,7 +151,7 @@ class slurmGPUMem(linefunc):
         if not comment.strip():  return
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
-        return comment['gpu_mem_max']
+        return comment.get('gpu_mem_max')
 
 class slurmGPUUtil(linefunc):
     @staticmethod
@@ -160,6 +160,7 @@ class slurmGPUUtil(linefunc):
         if not comment.strip(): return
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
+        if 'gpu_util' not in comment:  return
         return comment['gpu_util']/100.
 
 class slurmGPUCount(linefunc):
@@ -169,7 +170,7 @@ class slurmGPUCount(linefunc):
         if not comment.strip():        return
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
-        return comment['ngpu']
+        return comment.get('ngpu')
 
 # Job ID related stuff
 class slurmJobIDParent(linefunc):
