@@ -102,6 +102,17 @@ class slurmMemNode(linefunc):
         if reqmem.endswith('n'):
             return slurmmem(reqmem)
 
+class slurmMemCPU(linefunc):
+    """Memory per cpu, computed if necessary"""
+    @staticmethod
+    def calc(row):
+        reqmem = row['ReqMem']
+        if not reqmem:  return None
+        if reqmem.endswith('c'):
+            return slurmmem(reqmem)
+        if reqmem.endswith('n'):
+            return slurmmem(reqmem) * int(row['NNodes']) / int(row['NCPUS'])
+
 class slurmMemType(linefunc):
     """Memory type: 'n' per node, 'c' per core"""
     @staticmethod
@@ -208,58 +219,60 @@ class slurmCPUEff(linefunc):
 # without the underscore.
 COLUMNS = {
     # Basic job metadata
-    'JobID': str,
-    'JobIDRaw': str,
-    'JobName': str,
-    '_ArrayID': slurmArrayID,
-    '_StepID': slurmStepID,
-    '_JobIDParent': slurmJobIDParent,
-    'User': str,
-    'Account': str,
+    'JobID': str,                       # Slurm Job ID or 'Job_Array'
+    'JobIDRaw': str,                    # Actual job ID, including of array jobs.
+    'JobName': str,                     # Free-form text name of the job
+    '_ArrayID': slurmArrayID,           # "Array" component of "Job_Array.Step"
+    '_StepID': slurmStepID,             # "Step" component of above
+    '_JobIDParent': slurmJobIDParent,   # Just the Job part of "Job_Array" for array jobs
+    'User': str,                        # Username
+    'Account': str,                     # Account
 
     # Time limit and runtime info
-    'State': str,
-    'Timelimit': slurmtime,
-    'Elapsed': slurmtime,
-    'Submit': str,
-    '_SubmitTS': slurmSubmitTS,
-    'Start': str,
-    'End': str,
+    'State': str,                       # Job state
+    'Timelimit': slurmtime,             # Timelimit specified by user
+    'Elapsed': slurmtime,               # Walltime of the job
+    'Submit': str,                      # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
+    'Start': str,                       # Same, job start time
+    'End': str,                         # Same, job end time
+    '_SubmitTS': slurmSubmitTS,         # Same as above three, unixtime
     '_StartTS': slurmStartTS,
     '_EndTS': slurmEndTS,
-    'Partition': str,
-    'ExitCode': str,
-    'NodeList': str,
-    'ReqNodes': int_bytes,
-    'Priority': nullint,
+    'Partition': str,                   # Partition
+    'ExitCode': str,                    # ExitStatus:Signal
+    'NodeList': str,                    # Node list of jobs
+    'Priority': nullint,                # Slurm priority (higher = will run sooner)
+
+    # Stuff about number of nodes
+    'ReqNodes': int_bytes,              # Requested number of nodes
+    'NNodes': nullint,                  # Number of nodes (allocated if ran, requested if not yet)
+    'AllocNodes': nullint,              # Number of nodes (allocated, zero if not running yet)
 
     # Miscelaneous requested resources
     #'ReqTRES': str,
-    'ReqGRES': str,
+    'ReqGRES': str,                     # Raw GRES string
     'NTasks': nullint,
-    '_ReqGPU': slurmReqGPU,
-    'NNodes': nullint,
-    'AllocNodes': nullint,
     #'AllocGRES'
     #'AllocTRES'
 
     # CPU related
-    'NCPUS': nullint,       # = AllocCPUS
-    'ReqCPUS': nullint,
-    'AllocCPUS': nullint,
-    'CPUTime': slurmtime,   # = Elapsed * NCPUS    (= CPUTimeRaw)  (not how much used)
-    'TotalCPU': slurmtime,  # = Elapsed * NCPUS * efficiency
-    'UserCPU': slurmtime,
-    'SystemCPU': slurmtime,
-    '_CPUEff': slurmCPUEff,
-    'MinCPU': slurmtime,
+    'NCPUS': nullint,                   # === AllocCPUS
+    'ReqCPUS': nullint,                 # Requested CPUs
+    'AllocCPUS': nullint,               # === NCPUS
+    'CPUTime': slurmtime,               # = Elapsed * NCPUS    (= CPUTimeRaw)  (not how much used)
+    'TotalCPU': slurmtime,              # = Elapsed * NCPUS * efficiency
+    'UserCPU': slurmtime,               #
+    'SystemCPU': slurmtime,             #
+    '_CPUEff': slurmCPUEff,             # CPU efficiency, should be same as seff
+    'MinCPU': slurmtime,                # Minimum CPU used by any task in the job
     'MinCPUNode': str,
     'MinCPUTask': str,
 
     # Memory related
-    'ReqMem': slurmMemNode,
-    '_ReqMemType': slurmMemType,
-    '_ReqMemRaw': slurmMemRaw,
+    'ReqMem': str,                      # Requested mem, value from slurm.  Has a 'c' on 'n' suffix
+    '_ReqMemType': slurmMemType,        # 'c' for mem-per-cpu or 'n' for mem-per-node
+    '_ReqMemNode': slurmMemNode,        # Mem per node, computed if type 'c'
+    '_ReqMemCPU': slurmMemCPU,         # Mem per cpu, computed if type 'n'
     'AveRSS': slurmmem,
     'MaxRSS': slurmmem,
     'MaxRSSNode': str,
@@ -276,10 +289,11 @@ COLUMNS = {
     'MaxDiskWriteTask': str,
 
     # GPU related
-    'Comment': nullstr,
-    '_GPUMem': slurmGPUMem,
-    '_GPUUtil': slurmGPUUtil,
-    '_NGPU': slurmGPUCount,
+    '_ReqGPUS': slurmReqGPU,            # Number of GPUS requested
+    'Comment': nullstr,                 # Slurm Comment field (at Aalto used for GPU stats)
+    '_GPUMem': slurmGPUMem,             # GPU mem extracted from comment field
+    '_GPUUtil': slurmGPUUtil,           # GPU utilization (0.0 to 1.0) extracted from comment field
+    '_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     }
 
 if __name__ == "__main__":
