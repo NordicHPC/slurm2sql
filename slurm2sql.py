@@ -334,7 +334,7 @@ def main(argv):
             slurm2sql(db, sacct_filter=new_filter, update=True)
             db.commit()
             start = end
-
+        return 0
 
     slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
 
@@ -384,19 +384,12 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
                                          else COLUMNS[k].calc(line))
                           for k in COLUMNS.keys()}
 
-        def insert(processed_line_):
-            #print(processed_line)
-            c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
-                'OR REPLACE' if update else '',
-                ','.join(processed_line_.keys()),
-                ','.join(['?']*len(processed_line_))),
-                tuple(processed_line_.values()))
+        c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
+                  'OR REPLACE' if update else '',
+                  ','.join(processed_line.keys()),
+                  ','.join(['?']*len(processed_line))),
+            tuple(processed_line.values()))
 
-        #last_allocation = processed_line
-        #if last_line['JobIDParent'] == processed_line['JobIDParent'] and processed_line['StepID'] == 'batch':
-        #    last_allocation['
-
-        insert(processed_line)
 
         if i%10000 == 0:
             print('committing')
