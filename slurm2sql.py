@@ -40,6 +40,10 @@ def slurmtime(x):
     if len(hms) >= 1:   seconds += float(hms[-1])
     return seconds
 
+def str_unknown(x):
+    if x == 'Unknown': return None
+    return x
+
 def slurmmem(x):
     """Memory, removing 'n' or 'c' at end, in KB"""
     if not x:  return None
@@ -233,9 +237,9 @@ COLUMNS = {
     'State': str,                       # Job state
     'Timelimit': slurmtime,             # Timelimit specified by user
     'Elapsed': slurmtime,               # Walltime of the job
-    'Submit': str,                      # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
-    'Start': str,                       # Same, job start time
-    'End': str,                         # Same, job end time
+    'Submit': str_unknown,              # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
+    'Start': str_unknown,               # Same, job start time
+    'End': str_unknown,                 # Same, job end time
     '_SubmitTS': slurmSubmitTS,         # Same as above three, unixtime
     '_StartTS': slurmStartTS,
     '_EndTS': slurmEndTS,
@@ -309,11 +313,28 @@ def main(argv):
     parser.add_argument('--update', '-u', action='store_true',
                         help="If given, don't delete existing database and "
                              "instead insert or update rows")
+    parser.add_argument('--days-history', type=int)
     args = parser.parse_args(argv)
 
     if not args.update and os.path.exists(args.db):
         os.unlink(args.db)
     db = sqlite3.connect(args.db)
+
+    if args.days_history is not None:
+        today = datetime.date.today()
+        start = today - datetime.timedelta(days=args.days_history)
+        while start <= today:
+            end = start+datetime.timedelta(days=1)
+            new_filter = args.sacct_filter + [
+                '-S', start.strftime('%Y-%m-%d'),
+                '-E', end.strftime('%Y-%m-%d'),
+                ]
+            print(new_filter)
+            print(start)
+            slurm2sql(db, sacct_filter=new_filter, update=True)
+            db.commit()
+            start = end
+
 
     slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
 
@@ -332,9 +353,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
     are selected.
     """
     create_columns = ', '.join(c.strip('_') for c in COLUMNS)
-    create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE')
+    #create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE ON CONFLICT REPLACE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
-    db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
+    db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_slurm_JobIDRaw ON slurm (JobIDRaw)')
     #db.execute('CREATE VIEW IF NOT EXISTS some_view as select *, (TotalCPU/Elapsed*NCPUS) from slurm;')
     c = db.cursor()
 
@@ -347,7 +368,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
                          stdout=subprocess.PIPE, universal_newlines=True)
 
     # We don't use the csv module because the csv can be malformed.
-    # In particular, job name can include newlines.  TODO: handle job
+    # In particular, job name can include newlines(!).  TODO: handle job
     # names with newlines.
     for i, rawline in enumerate(p.stdout):
         if i == 0:  continue
@@ -377,6 +398,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
 
         insert(processed_line)
 
+        if i%10000 == 0:
+            print('committing')
+            db.commit()
     db.commit()
 
 
