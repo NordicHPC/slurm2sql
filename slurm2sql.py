@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# pylint: disable=too-few-public-methods, missing-docstring
+
 import argparse
 import datetime
 import json
