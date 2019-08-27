@@ -357,8 +357,9 @@ def get_history(db, days_history=None, sacct_filter=['-a']):
     today = datetime.date.today()
     start = today - datetime.timedelta(days=days_history)
     days_ago = days_history
+    day_interval = 1
     while start <= today:
-        end = start+datetime.timedelta(days=1)
+        end = start+datetime.timedelta(days=day_interval)
         new_filter = sacct_filter + [
             '-S', start.strftime('%Y-%m-%d'),
             '-E', end.strftime('%Y-%m-%d'),
@@ -367,7 +368,7 @@ def get_history(db, days_history=None, sacct_filter=['-a']):
         errors += slurm2sql(db, sacct_filter=new_filter, update=True)
         db.commit()
         start = end
-        days_ago -= 1
+        days_ago -= day_interval
     return errors
 
 
