@@ -200,19 +200,21 @@ class slurmStepID(linefunc):
         return row['JobID'].split('.')[-1]
 
 # Efficiency stuff
-#class slurmMemEff(linefunc):
-#    #https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
-#    @staticmethod
-#    def calc(row):
-#        walltime = slurmtime(row['Elapsed'])
-#        reqmemtype = slurmMemType(row)
-#        reqmem = int(row['ReqMem'].strip('Knc'))
-#        if reqmemtype == 'c':
-#            reqmem = reqmem * int(row['NCPUS'])
-#            pernode = False
-#        else:
-#            reqmem = reqmem * int(row['NNodes'])
-#            pernode = True
+class slurmMemEff(linefunc):
+    #https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
+    @staticmethod
+    def calc(row):
+        reqmem_type = slurmMemType.calc(row)
+        mem_max = slurmmem(row['MaxRSS'])
+        reqmem = slurmmem(row['ReqMem'])
+        if not reqmem or mem_max is None:  return
+        if reqmem_type == 'c':
+            nodemem = reqmem * int(row['NCPUS'])
+        elif reqmem_type == 'n':
+            nodemem = reqmem
+        else:
+            raise ValueError('unknown memory type: %s'%reqmem_type)
+        return mem_max / nodemem
 
 class slurmCPUEff(linefunc):
     # This matches the seff tool currently:
@@ -221,7 +223,7 @@ class slurmCPUEff(linefunc):
     def calc(row):
         walltime = slurmtime(row['Elapsed'])
         if not walltime: return None
-        cpueff = slurmtime(row['TotalCPU']) / (walltime * int(row['AllocCPUS']))
+        cpueff = slurmtime(row['TotalCPU']) / (walltime * int(row['NCPUS']))
         return cpueff
 
 
@@ -286,11 +288,12 @@ COLUMNS = {
     'ReqMem': str,                      # Requested mem, value from slurm.  Has a 'c' on 'n' suffix
     '_ReqMemType': slurmMemType,        # 'c' for mem-per-cpu or 'n' for mem-per-node
     '_ReqMemNode': slurmMemNode,        # Mem per node, computed if type 'c'
-    '_ReqMemCPU': slurmMemCPU,         # Mem per cpu, computed if type 'n'
+    '_ReqMemCPU': slurmMemCPU,          # Mem per cpu, computed if type 'n'
     'AveRSS': slurmmem,
     'MaxRSS': slurmmem,
     'MaxRSSNode': str,
     'MaxRSSTask': str,
+    '_MemEff': slurmMemEff,             # Slurm memory efficiency
 
     # Disk related
     'AveDiskRead': int_bytes,
