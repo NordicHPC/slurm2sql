@@ -147,7 +147,7 @@ class slurmReqGPU(linefunc):
     def calc(row):
         gres = row['ReqGRES']
         if not gres:  return None
-        m = re.search('gpu:(\d+)', gres)
+        m = re.search(r'gpu:(\d+)', gres)
         if m:
             return int(m.group(1))
 
