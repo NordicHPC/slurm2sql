@@ -106,8 +106,12 @@ class slurmMemNode(linefunc):
     def calc(row):
         reqmem = row['ReqMem']
         if not reqmem:  return None
+        ncpus = int(row['NCPUS'])
+        if ncpus == 0:  return 0
+        nnodes = int(row['NNodes'])
+        if nnodes == 0: return None
         if reqmem.endswith('c'):
-            return slurmmem(reqmem) * int(row['NCPUS']) / int(row['NNodes'])
+            return slurmmem(reqmem) * ncpus / nnodes
         if reqmem.endswith('n'):
             return slurmmem(reqmem)
 
@@ -117,10 +121,14 @@ class slurmMemCPU(linefunc):
     def calc(row):
         reqmem = row['ReqMem']
         if not reqmem:  return None
+        nnodes = int(row['NNodes'])
+        if nnodes == 0: return 0
+        ncpus = int(row['NCPUS'])
+        if ncpus == 0:  return None
         if reqmem.endswith('c'):
             return slurmmem(reqmem)
         if reqmem.endswith('n'):
-            return slurmmem(reqmem) * int(row['NNodes']) / int(row['NCPUS'])
+            return slurmmem(reqmem) * nnodes / ncpus
 
 class slurmMemType(linefunc):
     """Memory type: 'n' per node, 'c' per core"""
