@@ -20,9 +20,9 @@ def nullint(x):
     """int or None"""
     return int(x) if x else None
 
-def nullstr(x):
+def nullstr_strip(x):
     """str or None"""
-    return str(x) if x else None
+    return str(x).strip() if x else None
 
 def timestamp(x):
     """Timestamp in local time, converted to unixtime"""
@@ -302,7 +302,7 @@ COLUMNS = {
 
     # GPU related
     '_ReqGPUS': slurmReqGPU,            # Number of GPUS requested
-    'Comment': nullstr,                 # Slurm Comment field (at Aalto used for GPU stats)
+    'Comment': nullstr_strip,           # Slurm Comment field (at Aalto used for GPU stats)
     '_GPUMem': slurmGPUMem,             # GPU mem extracted from comment field
     '_GPUUtil': slurmGPUUtil,           # GPU utilization (0.0 to 1.0) extracted from comment field
     '_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
