@@ -68,11 +68,8 @@ def float_bytes(x, convert=float):
     if not x:  return None
     unit = x[-1].lower()
     if unit in 'kmgtpezy':
-        val = x[:-1]
-    else:
-        unit = '_'
-        val = x
-    return convert(val) * unit_value(unit)
+        return convert(x[:-1]) * unit_value(unit)
+    return convert(x)
 
 def int_bytes(x):
     return float_bytes(x, convert=lambda x: int(float(x)))
