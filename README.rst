@@ -33,12 +33,16 @@ users (``-a``)::
 To get the data from the last *N* days.  This will, day by day, get
 each of these history and cumulatively update the database.  This
 updates a database by default, so that it can be used every day in
-order to efficiently keep a running database.::
+order to efficiently keep a running database.  The ``-u`` option means
+"don't delete existing database (jobs with the same JobID get updated,
+not duplicated)::
 
-  slurm2sql.py --days-history=N sincejuly.sqlite3 -- -a
+  slurm2sql.py --days-history=N -u sincejuly.sqlite3 -- -a
 
 
-It can also be used from Python::
+
+It can also be used from Python as what is essentially a glorified
+parser::
 
   db = sqlite3.connect(':memory:')
   slurm2sql.slurm2sql(db, ['-S', '2019-08-26'])
@@ -66,9 +70,67 @@ slurm column directly to a database column via a function, and line
 functions, which take the whole row and can do arbitrary remixing of
 the data.
 
+Columns
+~~~~~~~
+
+All column values are converted to standard units: *bytes* (not MB,
+KB, etc), *seconds*, *fraction 0.0-1.0* for things like
+percentages.
+
+Below are some notable columns which do not exist in sacct.  It's good
+to verify that any of our custom columns make sense before trusting
+them.  For other columns, check ``man sacct``.
+
+* ``ArrayID``: The Array ID of a job (``JobID_ArrayID.StepID``).
+
+* ``StepID``: See above.  If you SQL filter for ``StepID is null`` you
+  get only the main allocations.
+
+* ``JobIDParent``: The ``JobID`` of above, without the array index.
+
+* ``SubmitTS``, ``StartTS``, ``EndTS``: like the sacct equivalents,
+  but unixtime.  Assume that the sacct timestamps are in localtime of
+  the machine doing the conversion.
+
+* ``ReqMemNode``, ``ReqMemCPU``: Requested memory per node or CPU,
+  either taken from ReqMem (if it matches) or computed.  In Slurm, you
+  can request memory either per-node or per-core, and this calculates
+  the other one for you.
+
+* ``ReqMemType``: ``c`` if the user requested mem-per-core originally,
+  ``n`` if mem-per-node.  Extracted from ``ReqMem``
+
+* ``ReqMemRaw``: The numeric value of the ``ReqMem``, whether it is
+  ``c`` or ``n``.
+
+* ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqGRES``.
+
+* GPU information.  At Aalto we store GPU usage information in the
+
+  ``Comment`` field in JSON of the form ``{"gpu_util": NN.NN,
+  "gpu_max_mem": NN, "ngpu": N}``.  This extracts information from that.
+
+  * ``GPUMem``: Max amount of memory used from any GPU>
+
+  * ``GPUUtil``: Percent usage of the GPUs (0.0-1.0).
+
+  * ``NGPU``: Number of GPUs.  Should be the same as ``ReqGPU``, but
+    who knows.
+
+* ``MemEff``: Memory efficiency (0.0-1.0).  Like in ``seff``.  We
+  compute it ourselves, so it could be wrong.  Test before trusting!
+  There can still be corner cases, job steps may be off, etc.  This
+  also relies on memory reporting being correct, which may not be the
+  case...
+
+* ``CPUEff``: CPU efficiency (0.0-1.0).  All the same caveats as above
+  apply: test before trusting.
+
 
 
 Development and maintenance
 ---------------------------
 
-This could be considered functional alpha right now.
+This could be considered functional alpha right or almost beta now.
+
+Originally developed at Aalto University, Finland.
