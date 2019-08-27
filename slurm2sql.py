@@ -344,8 +344,8 @@ def main(argv):
 
     if errors:
         print("Completed with %s errors"%errors)
-        exit(1)
-    exit(0)
+        return(1)
+    return(0)
 
 
 def get_history(db, days_history=None, sacct_filter=['-a']):
@@ -410,11 +410,11 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
     errors = 0
     for i, rawline in enumerate(p.stdout):
         if i == 0:
-            errors += 1
+            # header
             continue
         line = rawline.split(';|;')
         if len(line) != len(slurm_cols):
-            print("Line with wrong number of columns:", rawline)
+            print("Line with wrong number of columns:", rawline, file=sys.stdout)
             errors += 1
             continue
         line = dict(zip(slurm_cols, line))
