@@ -9,6 +9,11 @@ import sqlite3
 import subprocess
 import sys
 
+#
+# First, many converter functions/classes which convert strings to
+# useful values.
+#
+
 # Single converter functions: transform one column to sqlite value
 # stored as that same column.
 def nullint(x):
@@ -219,10 +224,11 @@ class slurmCPUEff(linefunc):
 
 
 
-# All defined columns and their respective converter functions.
-# If it begins in a underscore, this is not a Slurm DB field, it is
-# computed.  Don't get it from sacct, but add it to our database
-# without the underscore.
+# All defined columns and their respective converter functions.  If a
+# key begins in a underscore, this is not a Slurm DB field (don't
+# query it from sacct), it is computed from other fields in this
+# program.  It gets added to our sqlite database without the
+# underscore.
 COLUMNS = {
     # Basic job metadata
     'JobID': str,                       # Slurm Job ID or 'Job_Array'
@@ -234,7 +240,7 @@ COLUMNS = {
     'User': str,                        # Username
     'Account': str,                     # Account
 
-    # Time limit and runtime info
+    # Times and runtime info
     'State': str,                       # Job state
     'Timelimit': slurmtime,             # Timelimit specified by user
     'Elapsed': slurmtime,               # Walltime of the job
@@ -305,6 +311,7 @@ COLUMNS = {
 
 
 def main(argv):
+    """Parse arguments and use the other API"""
     parser = argparse.ArgumentParser()
     parser.add_argument('db', help="Database filename to create or update")
     parser.add_argument('sacct_filter', nargs='*',
@@ -317,10 +324,12 @@ def main(argv):
     parser.add_argument('--days-history', type=int)
     args = parser.parse_args(argv)
 
+    # Delete existing database unless --update/-u is given
     if not args.update and os.path.exists(args.db):
         os.unlink(args.db)
     db = sqlite3.connect(args.db)
 
+    # If --days-history, get just this many days history
     if args.days_history is not None:
         today = datetime.date.today()
         start = today - datetime.timedelta(days=args.days_history)
