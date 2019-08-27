@@ -391,7 +391,8 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
     create_columns = ', '.join(c.strip('_') for c in COLUMNS)
     create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
-    #db.execute('CREATE VIEW IF NOT EXISTS some_view as select *, (TotalCPU/Elapsed*NCPUS) from slurm;')
+    db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where StepID is null;')
+    db.commit()
     c = db.cursor()
 
     slurm_cols = tuple(c for c in COLUMNS.keys() if not c.startswith('_'))
