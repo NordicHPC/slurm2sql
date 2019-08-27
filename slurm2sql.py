@@ -407,12 +407,22 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
     # In particular, job name can include newlines(!).  TODO: handle job
     # names with newlines.
     errors = 0
+    line_continuation = None
     for i, rawline in enumerate(p.stdout):
         if i == 0:
             # header
             continue
+        # Handle fields that have embedded newline (JobName).  If we
+        # have too few fields, save the line and continue.
+        if line_continuation:
+            rawline = line_continuation + rawline
+            line_continuation = None
         line = rawline.split(';|;')
-        if len(line) != len(slurm_cols):
+        if len(line) < len(slurm_cols):
+            line_continuation = rawline
+            continue
+        # (end)
+        if len(line) > len(slurm_cols):
             print("Line with wrong number of columns:", rawline, file=sys.stdout)
             errors += 1
             continue
