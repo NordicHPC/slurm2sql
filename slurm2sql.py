@@ -391,6 +391,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
 
     slurm_cols = tuple(c for c in COLUMNS.keys() if not c.startswith('_'))
     cmd = ['sacct', '-o', ','.join(slurm_cols), '-P', '--units=K',
+           '--delimiter=;|;',
            #'--allocations',  # no job steps, only total jobs, but doesn't show used resources.
            *sacct_filter]
     #print(' '.join(cmd))
@@ -406,8 +407,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
         if i == 0:
             errors += 1
             continue
-        line = rawline.split('|')
-        if len(line) < len(slurm_cols):
+        line = rawline.split(';|;')
+        if len(line) != len(slurm_cols):
+            print("Line with wrong number of columns:", rawline)
             errors += 1
             continue
         line = dict(zip(slurm_cols, line))
