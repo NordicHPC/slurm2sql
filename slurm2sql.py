@@ -331,23 +331,41 @@ def main(argv):
 
     # If --days-history, get just this many days history
     if args.days_history is not None:
-        today = datetime.date.today()
-        start = today - datetime.timedelta(days=args.days_history)
-        while start <= today:
-            end = start+datetime.timedelta(days=1)
-            new_filter = args.sacct_filter + [
-                '-S', start.strftime('%Y-%m-%d'),
-                '-E', end.strftime('%Y-%m-%d'),
-                ]
-            print(new_filter)
-            print(start)
-            slurm2sql(db, sacct_filter=new_filter, update=True)
-            db.commit()
-            start = end
-        return 0
+        errors = get_history(db, days_history=args.days_history, sacct_filter=args.sacct_filter)
 
-    slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
+    # Normal operation
+    else:
+        slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
+    if errors:
+        print("Completed with %s errors")
+        exit(1)
+    exit(0)
 
+
+def get_history(db, days_history=None, sacct_filter=['-a']):
+    """Get history for a certain period of days.
+
+    Queries each day and updates the database, so as to avoid
+    overloading sacct and causing a failure.
+
+    Returns: the number of errors.
+    """
+    errors = 0
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=days_history)
+    days_ago = days_history
+    while start <= today:
+        end = start+datetime.timedelta(days=1)
+        new_filter = sacct_filter + [
+            '-S', start.strftime('%Y-%m-%d'),
+            '-E', end.strftime('%Y-%m-%d'),
+            ]
+        print(days_ago, start)
+        errors += slurm2sql(db, sacct_filter=new_filter, update=True)
+        db.commit()
+        start = end
+        days_ago -= 1
+    return errors
 
 
 def slurm2sql(db, sacct_filter=['-a'], update=False):
@@ -361,6 +379,8 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
     filters, such as ['-a'], ['-S' '2019-08-01'], and so on.  The
     argument should be a list.  You can't currently filter what columns
     are selected.
+
+    Returns: the number of errors
     """
     create_columns = ', '.join(c.strip('_') for c in COLUMNS)
     create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE')
@@ -374,15 +394,20 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
            *sacct_filter]
     #print(' '.join(cmd))
     p = subprocess.Popen(cmd,
-                         stdout=subprocess.PIPE, universal_newlines=True)
+                         stdout=subprocess.PIPE, universal_newlines=True,
+                         errors='replace')
 
     # We don't use the csv module because the csv can be malformed.
     # In particular, job name can include newlines(!).  TODO: handle job
     # names with newlines.
+    errors = 0
     for i, rawline in enumerate(p.stdout):
-        if i == 0:  continue
+        if i == 0:
+            errors += 1
+            continue
         line = rawline.split('|')
         if len(line) < len(slurm_cols):
+            errors += 1
             continue
         line = dict(zip(slurm_cols, line))
 
@@ -400,11 +425,12 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
             tuple(processed_line.values()))
 
 
+        # Committing every so often allows other queries to succeed
         if i%10000 == 0:
-            print('committing')
+            #print('committing')
             db.commit()
     db.commit()
-
+    return errors
 
 
 if __name__ == "__main__":
