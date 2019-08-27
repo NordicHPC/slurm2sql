@@ -335,9 +335,10 @@ def main(argv):
 
     # Normal operation
     else:
-        slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
+        errors = slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
+
     if errors:
-        print("Completed with %s errors")
+        print("Completed with %s errors"%errors)
         exit(1)
     exit(0)
 
