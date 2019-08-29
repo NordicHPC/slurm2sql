@@ -339,6 +339,8 @@ def main(argv, *, db=None, lines=None):
                              "instead insert or update rows")
     parser.add_argument('--history-days', type=int)
     parser.add_argument('--history-start')
+    parser.add_argument('--jobs-only', action='store_true',
+                        help="Don't include job steps but only the man jobs")
     args = parser.parse_args(argv)
 
     # db is only given as an argument in tests (normally)
@@ -355,12 +357,15 @@ def main(argv, *, db=None, lines=None):
         or args.history_start is not None):
         errors = get_history(db, sacct_filter=sacct_filter,
                             history_days=args.history_days,
-                            history_start=args.history_start)
+                            history_start=args.history_start,
+                            jobs_only=args.jobs_only)
 
         create_indexes(db)
     # Normal operation
     else:
-        errors = slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
+        errors = slurm2sql(db, sacct_filter=sacct_filter,
+                           update=args.update,
+                           jobs_only=args.jobs_only)
         create_indexes(db)
 
     if errors:
@@ -369,7 +374,8 @@ def main(argv, *, db=None, lines=None):
     return(0)
 
 
-def get_history(db, history_days=None, history_start=None, sacct_filter=['-a']):
+def get_history(db, history_days=None, history_start=None, sacct_filter=['-a'],
+                jobs_only=False):
     """Get history for a certain period of days.
 
     Queries each day and updates the database, so as to avoid
@@ -472,6 +478,12 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
             errors += 1
             continue
         line = dict(zip(header, line))
+
+        # If --jobs-only, then skip all job steps (sacct updates the
+        # mem/cpu usage on the allocation itself already)
+        step_id = slurmStepID.calc(line)
+        if jobs_only and step_id is not None:
+            continue
 
         #LOG.debug(line)
         processed_line = {k.strip('_'): (COLUMNS[k](line[k])
