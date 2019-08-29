@@ -172,7 +172,7 @@ class slurmGPUMem(linefunc):
         if not comment.strip():  return
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
-        return comment.get('gpu_mem_max')
+        return comment.get('gpu_mem_max') * (2**20)
 
 class slurmGPUUtil(linefunc):
     @staticmethod
@@ -240,6 +240,29 @@ class slurmCPUEff(linefunc):
         cpueff = slurmtime(row['TotalCPU']) / (walltime * int(row['NCPUS']))
         return cpueff
 
+class slurmConsumedEnergy(linefunc):
+    @staticmethod
+    def calc(row):
+        if not row['ConsumedEnergyRaw']:  return None
+        return int(row['ConsumedEnergyRaw'])
+
+class slurmExitCodeRaw(linefunc):
+    @staticmethod
+    def calc(row):
+        if not row['ExitCode']:  return None
+        return row['ExitCode']
+
+class slurmExitCode(linefunc):
+    @staticmethod
+    def calc(row):
+        if not row['ExitCode']:  return None
+        return int(row['ExitCode'].split(':')[0])
+
+class slurmExitSignal(linefunc):
+    @staticmethod
+    def calc(row):
+        if not row['ExitCode']:  return None
+        return int(row['ExitCode'].split(':')[1])
 
 
 # All defined columns and their respective converter functions.  If a
@@ -256,6 +279,7 @@ COLUMNS = {
     '_StepID': slurmStepID,             # "Step" component of above
     '_JobIDParent': slurmJobIDParent,   # Just the Job part of "Job_Array" for array jobs
     'User': str,                        # Username
+    'Group': str,                       # Group
     'Account': str,                     # Account
 
     # Times and runtime info
@@ -269,9 +293,12 @@ COLUMNS = {
     '_StartTS': slurmStartTS,
     '_EndTS': slurmEndTS,
     'Partition': str,                   # Partition
-    'ExitCode': str,                    # ExitStatus:Signal
+    '_ExitCodeRaw': slurmExitCodeRaw,   # ExitStatus:Signal
+    'ExitCode': slurmExitCode,        # ExitStatus from above, int
+    '_ExitSignal': slurmExitSignal,     # Signal from above, int
     'NodeList': str,                    # Node list of jobs
     'Priority': nullint,                # Slurm priority (higher = will run sooner)
+    '_ConsumedEnergy': slurmConsumedEnergy,
 
     # Stuff about number of nodes
     'ReqNodes': int_bytes,              # Requested number of nodes
@@ -307,6 +334,8 @@ COLUMNS = {
     'MaxRSS': slurmmem,
     'MaxRSSNode': str,
     'MaxRSSTask': str,
+    'MaxPages': nullint,
+    'MaxVMSize': slurmmem,
     '_MemEff': slurmMemEff,             # Slurm memory efficiency
 
     # Disk related
@@ -326,6 +355,7 @@ COLUMNS = {
     '_GPUUtil': slurmGPUUtil,           # GPU utilization (0.0 to 1.0) extracted from comment field
     '_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     }
+COLUMNS_EXTRA = ['ConsumedEnergyRaw']
 
 
 
@@ -438,14 +468,14 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
 
     Returns: the number of errors
     """
-    create_columns = ', '.join(c.strip('_') for c in COLUMNS)
-    create_columns = create_columns.replace('JobIDRaw', 'JobIDRaw UNIQUE')
+    create_columns = ', '.join('"'+c.strip('_')+'"' for c in COLUMNS)
+    create_columns = create_columns.replace('JobIDRaw"', 'JobIDRaw" UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where StepID is null;')
     db.commit()
     c = db.cursor()
 
-    slurm_cols = tuple(c for c in COLUMNS.keys() if not c.startswith('_'))
+    slurm_cols = tuple(c for c in list(COLUMNS.keys()) + COLUMNS_EXTRA if not c.startswith('_'))
 
     # Read data from sacct, or interpert sacct_filter directly as
     # testdata if it has the attribute 'testdata'
@@ -497,7 +527,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
 
         c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
                   'OR REPLACE' if update else '',
-                  ','.join(processed_line.keys()),
+                  ','.join('"'+x+'"' for x in processed_line.keys()),
                   ','.join(['?']*len(processed_line))),
             tuple(processed_line.values()))
 
