@@ -474,7 +474,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
             continue
         # (end)
         if len(line) > len(slurm_cols):
-            LOG.error("Line with wrong number of columns: %s, %s", rawline, file=sys.stdout)
+            LOG.error("Line with wrong number of columns: %s", rawline)
             errors += 1
             continue
         line = dict(zip(header, line))
