@@ -419,13 +419,14 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
     for i, rawline in enumerate(p.stdout):
         if i == 0:
             # header
+            header = rawline.strip().split(';|;')
             continue
         # Handle fields that have embedded newline (JobName).  If we
         # have too few fields, save the line and continue.
         if line_continuation:
             rawline = line_continuation + rawline
             line_continuation = None
-        line = rawline.split(';|;')
+        line = rawline.strip().split(';|;')
         if len(line) < len(slurm_cols):
             line_continuation = rawline
             continue
@@ -434,7 +435,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
             print("Line with wrong number of columns:", rawline, file=sys.stdout)
             errors += 1
             continue
-        line = dict(zip(slurm_cols, line))
+        line = dict(zip(header, line))
 
         #print(line)
         processed_line = {k.strip('_'): (COLUMNS[k](line[k])
