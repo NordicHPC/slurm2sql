@@ -347,9 +347,11 @@ def main(argv):
                             history_days=args.history_days,
                             history_start=args.history_start)
 
+        create_indexes(db)
     # Normal operation
     else:
         errors = slurm2sql(db, sacct_filter=args.sacct_filter, update=args.update)
+        create_indexes(db)
 
     if errors:
         print("Completed with %s errors"%errors)
