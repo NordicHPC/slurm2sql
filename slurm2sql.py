@@ -5,11 +5,17 @@
 import argparse
 import datetime
 import json
+import logging
 import os
 import re
 import sqlite3
 import subprocess
 import sys
+
+LOG = logging.getLogger('slurm2sql')
+LOG.setLevel(logging.DEBUG)
+#logging.lastResort.setLevel(logging.DEBUG)
+
 
 #
 # First, many converter functions/classes which convert strings to
@@ -354,7 +360,7 @@ def main(argv):
         create_indexes(db)
 
     if errors:
-        print("Completed with %s errors"%errors)
+        LOG.warning("Completed with %s errors", errors)
         return(1)
     return(0)
 
@@ -382,7 +388,7 @@ def get_history(db, history_days=None, history_start=None, sacct_filter=['-a']):
             '-S', start.strftime('%Y-%m-%d'),
             '-E', end.strftime('%Y-%m-%d'),
             ]
-        print(days_ago, start)
+        LOG.info("%s %s", days_ago, start)
         errors += slurm2sql(db, sacct_filter=new_filter, update=True)
         db.commit()
         start = end
@@ -442,12 +448,12 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
             continue
         # (end)
         if len(line) > len(slurm_cols):
-            print("Line with wrong number of columns:", rawline, file=sys.stdout)
+            LOG.error("Line with wrong number of columns: %s, %s", rawline, file=sys.stdout)
             errors += 1
             continue
         line = dict(zip(header, line))
 
-        #print(line)
+        #LOG.debug(line)
         processed_line = {k.strip('_'): (COLUMNS[k](line[k])
                                          #if not isinstance(COLUMNS[k], type) or not issubclass(COLUMNS[k], linefunc)
                                          if not hasattr(COLUMNS[k], 'linefunc')
