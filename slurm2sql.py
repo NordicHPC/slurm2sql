@@ -326,7 +326,7 @@ COLUMNS = {
 
 
 
-def main(argv, *, db=None, lines=None):
+def main(argv, db=None, lines=None):
     """Parse arguments and use the other API"""
     parser = argparse.ArgumentParser()
     parser.add_argument('db', help="Database filename to create or update")
@@ -410,7 +410,7 @@ def sacct(slurm_cols, sacct_filter):
     cmd = ['sacct', '-o', ','.join(slurm_cols), '-P', '--units=K',
            '--delimiter=;|;',
            #'--allocations',  # no job steps, only total jobs, but doesn't show used resources.
-           *sacct_filter]
+           ] + list(sacct_filter)
     #LOG.debug(' '.join(cmd))
     p = subprocess.Popen(cmd,
                          stdout=subprocess.PIPE, universal_newlines=True,
