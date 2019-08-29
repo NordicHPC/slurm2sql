@@ -17,7 +17,8 @@ import time
 
 LOG = logging.getLogger('slurm2sql')
 LOG.setLevel(logging.DEBUG)
-#logging.lastResort.setLevel(logging.DEBUG)
+if sys.version_info[0] >= 3:
+    logging.lastResort.setLevel(logging.INFO)
 
 
 #
@@ -370,8 +371,10 @@ def main(argv, db=None, lines=None):
     parser.add_argument('--update', '-u', action='store_true',
                         help="If given, don't delete existing database and "
                              "instead insert or update rows")
-    parser.add_argument('--history-days', type=int)
-    parser.add_argument('--history-start')
+    parser.add_argument('--history-days', type=int,
+                        help="Day-by-day collect history, starting this many days ago.")
+    parser.add_argument('--history-start',
+                        help="Day-by-day collect history, starting on this day.")
     parser.add_argument('--jobs-only', action='store_true',
                         help="Don't include job steps but only the man jobs")
     args = parser.parse_args(argv)
@@ -450,9 +453,12 @@ def sacct(slurm_cols, sacct_filter):
                          errors='replace')
     return p.stdout
 
+
 def create_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start_user ON slurm (Start, User)')
+    db.execute('ANALYZE;')
     db.commit()
+
 
 def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
     """Import one call of sacct to a sqlite database.
@@ -472,6 +478,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
     create_columns = create_columns.replace('JobIDRaw"', 'JobIDRaw" UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where StepID is null;')
+    db.execute('PRAGMA journal_mode = WAL;')
     db.commit()
     c = db.cursor()
 
@@ -507,7 +514,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
             continue
         # (end)
         if len(line) > len(slurm_cols):
-            LOG.error("Line with wrong number of columns: %s", rawline)
+            LOG.error("Line with wrong number of columns: (want=%s, have=%s) %s", len(slurm_cols), len(line), rawline)
             errors += 1
             continue
         line = dict(zip(header, line))
