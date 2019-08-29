@@ -326,7 +326,7 @@ COLUMNS = {
 
 
 
-def main(argv):
+def main(argv, *, db=None, lines=None):
     """Parse arguments and use the other API"""
     parser = argparse.ArgumentParser()
     parser.add_argument('db', help="Database filename to create or update")
@@ -341,15 +341,19 @@ def main(argv):
     parser.add_argument('--history-start')
     args = parser.parse_args(argv)
 
-    # Delete existing database unless --update/-u is given
-    if not args.update and os.path.exists(args.db):
-        os.unlink(args.db)
-    db = sqlite3.connect(args.db)
+    # db is only given as an argument in tests (normally)
+    if db is None:
+        # Delete existing database unless --update/-u is given
+        if not args.update and os.path.exists(args.db):
+            os.unlink(args.db)
+        db = sqlite3.connect(args.db)
+
+    sacct_filter = lines or args.sacct_filter
 
     # If --history-days, get just this many days history
     if (args.history_days is not None
         or args.history_start is not None):
-        errors = get_history(db, sacct_filter=args.sacct_filter,
+        errors = get_history(db, sacct_filter=sacct_filter,
                             history_days=args.history_days,
                             history_start=args.history_start)
 
@@ -389,14 +393,29 @@ def get_history(db, history_days=None, history_start=None, sacct_filter=['-a']):
             '-E', end.strftime('%Y-%m-%d'),
             ]
         LOG.info("%s %s", days_ago, start)
-        errors += slurm2sql(db, sacct_filter=new_filter, update=True)
+        errors += slurm2sql(db, sacct_filter=new_filter, update=True, jobs_only=jobs_only)
         db.commit()
         start = end
         days_ago -= day_interval
     return errors
 
 
-def slurm2sql(db, sacct_filter=['-a'], update=False):
+def sacct(slurm_cols, sacct_filter):
+    cmd = ['sacct', '-o', ','.join(slurm_cols), '-P', '--units=K',
+           '--delimiter=;|;',
+           #'--allocations',  # no job steps, only total jobs, but doesn't show used resources.
+           *sacct_filter]
+    #LOG.debug(' '.join(cmd))
+    p = subprocess.Popen(cmd,
+                         stdout=subprocess.PIPE, universal_newlines=True,
+                         errors='replace')
+    return p.stdout
+
+def create_indexes(db):
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start_user ON slurm (Start, User)')
+    db.commit()
+
+def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
     """Import one call of sacct to a sqlite database.
 
     db:
@@ -418,21 +437,22 @@ def slurm2sql(db, sacct_filter=['-a'], update=False):
     c = db.cursor()
 
     slurm_cols = tuple(c for c in COLUMNS.keys() if not c.startswith('_'))
-    cmd = ['sacct', '-o', ','.join(slurm_cols), '-P', '--units=K',
-           '--delimiter=;|;',
-           #'--allocations',  # no job steps, only total jobs, but doesn't show used resources.
-           *sacct_filter]
-    #print(' '.join(cmd))
-    p = subprocess.Popen(cmd,
-                         stdout=subprocess.PIPE, universal_newlines=True,
-                         errors='replace')
+
+    # Read data from sacct, or interpert sacct_filter directly as
+    # testdata if it has the attribute 'testdata'
+    if not hasattr(sacct_filter, 'testdata'):
+        # This is a real filter, read data
+        lines = sacct(slurm_cols, sacct_filter)
+    else:
+        # Support tests - raw lines can be put in
+        lines = sacct_filter
 
     # We don't use the csv module because the csv can be malformed.
     # In particular, job name can include newlines(!).  TODO: handle job
     # names with newlines.
     errors = 0
     line_continuation = None
-    for i, rawline in enumerate(p.stdout):
+    for i, rawline in enumerate(lines):
         if i == 0:
             # header
             header = rawline.strip().split(';|;')
