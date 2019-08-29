@@ -331,7 +331,8 @@ def main(argv):
     parser.add_argument('--update', '-u', action='store_true',
                         help="If given, don't delete existing database and "
                              "instead insert or update rows")
-    parser.add_argument('--days-history', type=int)
+    parser.add_argument('--history-days', type=int)
+    parser.add_argument('--history-start')
     args = parser.parse_args(argv)
 
     # Delete existing database unless --update/-u is given
@@ -339,9 +340,12 @@ def main(argv):
         os.unlink(args.db)
     db = sqlite3.connect(args.db)
 
-    # If --days-history, get just this many days history
-    if args.days_history is not None:
-        errors = get_history(db, days_history=args.days_history, sacct_filter=args.sacct_filter)
+    # If --history-days, get just this many days history
+    if (args.history_days is not None
+        or args.history_start is not None):
+        errors = get_history(db, sacct_filter=args.sacct_filter,
+                            history_days=args.history_days,
+                            history_start=args.history_start)
 
     # Normal operation
     else:
@@ -353,7 +357,7 @@ def main(argv):
     return(0)
 
 
-def get_history(db, days_history=None, sacct_filter=['-a']):
+def get_history(db, history_days=None, history_start=None, sacct_filter=['-a']):
     """Get history for a certain period of days.
 
     Queries each day and updates the database, so as to avoid
@@ -363,8 +367,12 @@ def get_history(db, days_history=None, sacct_filter=['-a']):
     """
     errors = 0
     today = datetime.date.today()
-    start = today - datetime.timedelta(days=days_history)
-    days_ago = days_history
+    if history_days:
+        start = today - datetime.timedelta(days=history_days)
+    elif history_start:
+        start = datetime.datetime.strptime(history_start, '%Y-%m-%d').date()
+
+    days_ago = (today - start).days
     day_interval = 1
     while start <= today:
         end = start+datetime.timedelta(days=day_interval)

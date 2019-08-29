@@ -34,10 +34,10 @@ To get the data from the last *N* days.  This will, day by day, get
 each of these history and cumulatively update the database.  This
 updates a database by default, so that it can be used every day in
 order to efficiently keep a running database.  The ``-u`` option means
-"don't delete existing database (jobs with the same JobID get updated,
-not duplicated)::
+"don't delete existing database" (jobs with the same JobID get
+updated, not duplicated)::
 
-  slurm2sql.py --days-history=N -u sincejuly.sqlite3 -- -a
+  slurm2sql.py --history-days=N -u sincejuly.sqlite3 -- -a
 
 
 
