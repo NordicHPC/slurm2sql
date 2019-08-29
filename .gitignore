@@ -1,2 +1,4 @@
+/.cache
 *.sqlite3
 *.sql
+/*.out
