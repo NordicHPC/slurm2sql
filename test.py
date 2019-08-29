@@ -36,7 +36,6 @@ def dbfile():
 def data1():
     """Test data set 1"""
     lines = open('tests/test-data1.txt')
-    lines.testdata = True
     yield lines
 
 

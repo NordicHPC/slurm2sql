@@ -2,6 +2,8 @@
 
 # pylint: disable=too-few-public-methods, missing-docstring
 
+from __future__ import division, print_function
+
 import argparse
 import datetime
 import json
@@ -11,6 +13,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 
 LOG = logging.getLogger('slurm2sql')
 LOG.setLevel(logging.DEBUG)
@@ -36,18 +39,18 @@ def timestamp(x):
     """Timestamp in local time, converted to unixtime"""
     if not x:           return None
     if x == 'Unknown':  return None
-    return datetime.datetime.strptime(x, '%Y-%m-%dT%H:%M:%S').timestamp()
+    return time.mktime(time.strptime(x, '%Y-%m-%dT%H:%M:%S'))
 
 def slurmtime(x):
     """Parse slurm time of format [dd-[hh:]]mm:ss"""
     if not x: return None
     seconds = 0
     if '-' in x:
-        days, time = x.split('-', 1)
+        days, time_ = x.split('-', 1)
         seconds += int(days) * 24 * 3600
     else:
-        time = x
-    hms = time.split(':')
+        time_ = x
+    hms = time_.split(':')
     if len(hms) >= 3:   seconds += int(hms[-3])*3600
     if len(hms) >= 2:   seconds += int(hms[-2])*60
     if len(hms) >= 1:   seconds += float(hms[-1])
@@ -446,7 +449,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
 
     # Read data from sacct, or interpert sacct_filter directly as
     # testdata if it has the attribute 'testdata'
-    if not hasattr(sacct_filter, 'testdata'):
+    if not hasattr(sacct_filter, 'readlines'):
         # This is a real filter, read data
         lines = sacct(slurm_cols, sacct_filter)
     else:
