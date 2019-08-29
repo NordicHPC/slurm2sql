@@ -173,6 +173,7 @@ class slurmGPUMem(linefunc):
         if not comment.strip():  return
         if 'No GPU stats' in comment:  return
         comment = json.loads(comment)
+        if 'gpu_mem_max' not in comment:  return
         return comment.get('gpu_mem_max') * (2**20)
 
 class slurmGPUUtil(linefunc):
