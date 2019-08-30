@@ -82,6 +82,12 @@ def test_cmdline_history_start(dbfile):
     os.system('python3 slurm2sql.py --history-start=2019-08-25 %s --'%dbfile)
     sqlite3.connect(dbfile).execute('SELECT JobName from slurm;')
 
+@pytest.mark.skipif(not has_sacct, reason="Can only be tested with sacct")
+def test_cmdline_history(dbfile):
+    print('x')
+    os.system('python3 slurm2sql.py --history=2-10 %s --'%dbfile)
+    sqlite3.connect(dbfile).execute('SELECT JobName from slurm;')
+
 
 #
 # Misc function tests

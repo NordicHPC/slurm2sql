@@ -39,6 +39,10 @@ updated, not duplicated)::
 
   slurm2sql.py --history-days=N -u sincejuly.sqlite3 -- -a
 
+The ``--history-start=YYYY-MM-DD`` option can do a similar thing
+starting from a certain day, and ``--history=DD-HH:MM:SS`` starts
+collecting from a given interval of time ago (the time format is as in
+Slurm).
 
 
 It can also be used from Python as what is essentially a glorified

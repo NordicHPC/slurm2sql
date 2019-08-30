@@ -394,6 +394,8 @@ def main(argv, db=None, lines=None):
     parser.add_argument('--update', '-u', action='store_true',
                         help="If given, don't delete existing database and "
                              "instead insert or update rows")
+    parser.add_argument('--history',
+                        help="Scrape dd-hh:mm:ss or [hh:]mm:ss from the past to now (Slurm time format)")
     parser.add_argument('--history-days', type=int,
                         help="Day-by-day collect history, starting this many days ago.")
     parser.add_argument('--history-start',
@@ -412,9 +414,11 @@ def main(argv, db=None, lines=None):
     sacct_filter = lines or args.sacct_filter
 
     # If --history-days, get just this many days history
-    if (args.history_days is not None
+    if (args.history is not None
+        or args.history_days is not None
         or args.history_start is not None):
         errors = get_history(db, sacct_filter=sacct_filter,
+                            history=args.history,
                             history_days=args.history_days,
                             history_start=args.history_start,
                             jobs_only=args.jobs_only)
@@ -433,7 +437,8 @@ def main(argv, db=None, lines=None):
     return(0)
 
 
-def get_history(db, history_days=None, history_start=None, sacct_filter=['-a'],
+def get_history(db, sacct_filter=['-a'],
+                history=None, history_days=None, history_start=None,
                 jobs_only=False):
     """Get history for a certain period of days.
 
@@ -443,21 +448,26 @@ def get_history(db, history_days=None, history_start=None, sacct_filter=['-a'],
     Returns: the number of errors.
     """
     errors = 0
+    now = datetime.datetime.now().replace(microsecond=0)
     today = datetime.date.today()
-    if history_days is not None:
-        start = today - datetime.timedelta(days=history_days)
+    if history is not None:
+        start = now - datetime.timedelta(seconds=slurmtime(history))
+        print('start=', start)
+    elif history_days is not None:
+        start = datetime.datetime.combine(today - datetime.timedelta(days=history_days), datetime.time())
     elif history_start is not None:
-        start = datetime.datetime.strptime(history_start, '%Y-%m-%d').date()
+        start = datetime.datetime.strptime(history_start, '%Y-%m-%d')
 
-    days_ago = (today - start).days
+    days_ago = (now - start).days
     day_interval = 1
-    while start <= today:
+    while start <= now:
         end = start+datetime.timedelta(days=day_interval)
         new_filter = sacct_filter + [
-            '-S', start.strftime('%Y-%m-%d'),
-            '-E', end.strftime('%Y-%m-%d'),
+            '-S', start.strftime('%Y-%m-%dT%H:%M:%S'),
+            '-E', end.strftime('%Y-%m-%dT%H:%M:%S'),
             ]
-        LOG.info("%s %s", days_ago, start)
+        LOG.debug(new_filter)
+        LOG.info("%s %s", days_ago, start.date() if history_days is not None else start)
         errors += slurm2sql(db, sacct_filter=new_filter, update=True, jobs_only=jobs_only)
         db.commit()
         start = end
