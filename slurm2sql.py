@@ -74,7 +74,7 @@ def unit_value_binary(unit):
     return 2**(10*'_kmgtpezy'.index(unit.lower()))
 
 def unit_value_metric(unit):
-    """Convert a unit to its value, e.g. 'K'-->1024, 'M'-->1048576"""
+    """Convert a unit to its value, e.g. 'K'-->1000, 'M'-->1000000"""
     if unit is None: unit = '_'
     return 1000**('_kmgtpezy'.index(unit.lower()))
 

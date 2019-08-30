@@ -83,6 +83,40 @@ def test_cmdline_history_start(dbfile):
     sqlite3.connect(dbfile).execute('SELECT JobName from slurm;')
 
 
+#
+# Misc function tests
+#
+def test_binary_units():
+    assert slurm2sql.int_bytes('2k') == 2048
+    assert slurm2sql.int_bytes('2M') == 2 * 2**20
+    assert slurm2sql.int_bytes('2G') == 2 * 2**30
+    assert slurm2sql.int_bytes('2T') == 2 * 2**40
+    assert slurm2sql.int_bytes('2p') == 2 * 2**50
+    assert isinstance(slurm2sql.int_bytes('2k'), int)
+
+    assert slurm2sql.float_bytes('2k') == 2048
+    assert slurm2sql.float_bytes('2M') == 2 * 2**20
+    assert slurm2sql.float_bytes('2G') == 2 * 2**30
+    assert slurm2sql.float_bytes('2t') == 2 * 2**40
+    assert slurm2sql.float_bytes('2P') == 2 * 2**50
+    assert isinstance(slurm2sql.float_bytes('2k'), float)
+
+def test_metric_units():
+    assert slurm2sql.int_metric('2k') == 2 * 1000**1
+    assert slurm2sql.int_metric('2M') == 2 * 1000**2
+    assert slurm2sql.int_metric('2G') == 2 * 1000**3
+    assert slurm2sql.int_metric('2T') == 2 * 1000**4
+    assert slurm2sql.int_metric('2p') == 2 * 1000**5
+    assert isinstance(slurm2sql.int_metric('2k'), int)
+
+    assert slurm2sql.float_metric('2k') == 2 * 1000**1
+    assert slurm2sql.float_metric('2M') == 2 * 1000**2
+    assert slurm2sql.float_metric('2G') == 2 * 1000**3
+    assert slurm2sql.float_metric('2t') == 2 * 1000**4
+    assert slurm2sql.float_metric('2P') == 2 * 1000**5
+    assert isinstance(slurm2sql.float_metric('2k'), float)
+
+
 
 #
 # Test data generation
