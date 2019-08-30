@@ -67,7 +67,10 @@ def test_verbose(db, data1, caplog):
     assert time.strftime("%Y-%m-%d") in caplog.text
 
 def test_quiet(db, data1, caplog, capfd):
+    slurm2sql.main(['dummy', '-q'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '--history=1-5', '-q'], raw_sacct=data1, db=db)
     slurm2sql.main(['dummy', '--history-days=1', '-q'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '--history-start=2019-01-01', '-q'], raw_sacct=data1, db=db)
     #assert caplog.text == ""
     captured = capfd.readouterr()
     assert captured.out == ""
