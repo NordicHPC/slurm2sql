@@ -68,21 +68,37 @@ def slurmmem(x):
     return float_bytes(x)
 
 # Converting kibi/mibi, etc units to numbers
-def unit_value(unit):
+def unit_value_binary(unit):
     """Convert a unit to its value, e.g. 'K'-->1024, 'M'-->1048576"""
     if unit is None: unit = '_'
     return 2**(10*'_kmgtpezy'.index(unit.lower()))
+
+def unit_value_metric(unit):
+    """Convert a unit to its value, e.g. 'K'-->1024, 'M'-->1048576"""
+    if unit is None: unit = '_'
+    return 1000**('_kmgtpezy'.index(unit.lower()))
 
 def float_bytes(x, convert=float):
     """Convert a float with unit (K,M, etc) to value"""
     if not x:  return None
     unit = x[-1].lower()
     if unit in 'kmgtpezy':
-        return convert(x[:-1]) * unit_value(unit)
+        return convert(x[:-1]) * unit_value_binary(unit)
     return convert(x)
 
 def int_bytes(x):
     return float_bytes(x, convert=lambda x: int(float(x)))
+
+def float_metric(x, convert=float):
+    """Convert a float with unit (K,M, etc) to value"""
+    if not x:  return None
+    unit = x[-1].lower()
+    if unit in 'kmgtpezy':
+        return convert(x[:-1]) * unit_value_metric(unit)
+    return convert(x)
+
+def int_metric(x):
+    return float_metric(x, convert=lambda x: int(float(x)))
 
 # Row converter fuctions which need *all* values to convert.  Classes
 # with one method, 'calc', which takes the whole row (a dict) and
@@ -336,7 +352,7 @@ COLUMNS = {
     'MaxRSS': slurmmem,
     'MaxRSSNode': str,
     'MaxRSSTask': str,
-    'MaxPages': nullint,
+    'MaxPages': int_metric,
     'MaxVMSize': slurmmem,
     '_MemEff': slurmMemEff,             # Slurm memory efficiency
 
