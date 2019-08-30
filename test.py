@@ -43,14 +43,14 @@ def data1():
 # Tests
 #
 def test_slurm2sql_basic(db, data1):
-    slurm2sql.slurm2sql(db, sacct_filter=data1)
+    slurm2sql.slurm2sql(db, sacct_filter=[], raw_sacct=data1)
     r = db.execute("SELECT JobName, StartTS "
                    "FROM slurm WHERE JobID='43974388';").fetchone()
     assert r[0] == 'spawner-jupyterhub'
     assert r[1] == 1564601354
 
 def test_main(db, data1):
-    slurm2sql.main(['dummy'], lines=data1, db=db)
+    slurm2sql.main(['dummy'], raw_sacct=data1, db=db)
     r = db.execute("SELECT JobName, StartTS "
                    "FROM slurm WHERE JobID='43974388';").fetchone()
     assert r[0] == 'spawner-jupyterhub'
@@ -59,8 +59,19 @@ def test_main(db, data1):
 
 def test_jobs_only(db, data1):
     """--jobs-only gives two rows"""
-    slurm2sql.main(['dummy', '--jobs-only'], lines=data1, db=db)
+    slurm2sql.main(['dummy', '--jobs-only'], raw_sacct=data1, db=db)
     assert db.execute("SELECT count(*) from slurm;").fetchone()[0] == 2
+
+def test_verbose(db, data1, caplog):
+    slurm2sql.main(['dummy', '--history-days=1', '-v'], raw_sacct=data1, db=db)
+    assert time.strftime("%Y-%m-%d") in caplog.text
+
+def test_quiet(db, data1, caplog, capfd):
+    slurm2sql.main(['dummy', '--history-days=1', '-q'], raw_sacct=data1, db=db)
+    #assert caplog.text == ""
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 #

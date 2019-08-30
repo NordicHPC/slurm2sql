@@ -19,6 +19,10 @@ LOG = logging.getLogger('slurm2sql')
 LOG.setLevel(logging.DEBUG)
 if sys.version_info[0] >= 3:
     logging.lastResort.setLevel(logging.INFO)
+else:
+    ch = logging.lastResort = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    LOG.addHandler(ch)
 
 
 #
@@ -383,7 +387,7 @@ COLUMNS_EXTRA = ['ConsumedEnergyRaw']
 
 
 
-def main(argv, db=None, lines=None):
+def main(argv, db=None, raw_sacct=None):
     """Parse arguments and use the other API"""
     parser = argparse.ArgumentParser()
     parser.add_argument('db', help="Database filename to create or update")
@@ -402,7 +406,16 @@ def main(argv, db=None, lines=None):
                         help="Day-by-day collect history, starting on this day.")
     parser.add_argument('--jobs-only', action='store_true',
                         help="Don't include job steps but only the man jobs")
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help="Don't output anything unless errors")
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help="Output more logging info")
     args = parser.parse_args(argv)
+
+    if args.verbose:
+        logging.lastResort.setLevel(logging.DEBUG)
+    if args.quiet:
+        logging.lastResort.setLevel(logging.WARN)
 
     # db is only given as an argument in tests (normally)
     if db is None:
@@ -411,7 +424,7 @@ def main(argv, db=None, lines=None):
             os.unlink(args.db)
         db = sqlite3.connect(args.db)
 
-    sacct_filter = lines or args.sacct_filter
+    sacct_filter = args.sacct_filter
 
     # If --history-days, get just this many days history
     if (args.history is not None
@@ -421,14 +434,16 @@ def main(argv, db=None, lines=None):
                             history=args.history,
                             history_days=args.history_days,
                             history_start=args.history_start,
-                            jobs_only=args.jobs_only)
+                            jobs_only=args.jobs_only,
+                            raw_sacct=raw_sacct)
 
         create_indexes(db)
     # Normal operation
     else:
         errors = slurm2sql(db, sacct_filter=sacct_filter,
                            update=args.update,
-                           jobs_only=args.jobs_only)
+                           jobs_only=args.jobs_only,
+                           raw_sacct=raw_sacct)
         create_indexes(db)
 
     if errors:
@@ -439,7 +454,7 @@ def main(argv, db=None, lines=None):
 
 def get_history(db, sacct_filter=['-a'],
                 history=None, history_days=None, history_start=None,
-                jobs_only=False):
+                jobs_only=False, raw_sacct=None):
     """Get history for a certain period of days.
 
     Queries each day and updates the database, so as to avoid
@@ -468,7 +483,8 @@ def get_history(db, sacct_filter=['-a'],
             ]
         LOG.debug(new_filter)
         LOG.info("%s %s", days_ago, start.date() if history_days is not None else start)
-        errors += slurm2sql(db, sacct_filter=new_filter, update=True, jobs_only=jobs_only)
+        errors += slurm2sql(db, sacct_filter=new_filter, update=True, jobs_only=jobs_only,
+                            raw_sacct=raw_sacct)
         db.commit()
         start = end
         days_ago -= day_interval
@@ -493,7 +509,8 @@ def create_indexes(db):
     db.commit()
 
 
-def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
+def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
+              raw_sacct=None):
     """Import one call of sacct to a sqlite database.
 
     db:
@@ -504,6 +521,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
     filters, such as ['-a'], ['-S' '2019-08-01'], and so on.  The
     argument should be a list.  You can't currently filter what columns
     are selected.
+
+    raw_sacct: If given, do not run sacct but use this as the input
+    (file-like object)
 
     Returns: the number of errors
     """
@@ -519,12 +539,12 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False):
 
     # Read data from sacct, or interpert sacct_filter directly as
     # testdata if it has the attribute 'testdata'
-    if not hasattr(sacct_filter, 'readlines'):
+    if raw_sacct is None:
         # This is a real filter, read data
         lines = sacct(slurm_cols, sacct_filter)
     else:
         # Support tests - raw lines can be put in
-        lines = sacct_filter
+        lines = raw_sacct
 
     # We don't use the csv module because the csv can be malformed.
     # In particular, job name can include newlines(!).  TODO: handle job
