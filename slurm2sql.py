@@ -497,9 +497,10 @@ def sacct(slurm_cols, sacct_filter):
            #'--allocations',  # no job steps, only total jobs, but doesn't show used resources.
            ] + list(sacct_filter)
     #LOG.debug(' '.join(cmd))
+    error_handling = {'errors':'replace'} if sys.version_info[0]>=3 else {}
     p = subprocess.Popen(cmd,
                          stdout=subprocess.PIPE, universal_newlines=True,
-                         errors='replace')
+                         **error_handling)
     return p.stdout
 
 
