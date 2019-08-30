@@ -444,9 +444,9 @@ def get_history(db, history_days=None, history_start=None, sacct_filter=['-a'],
     """
     errors = 0
     today = datetime.date.today()
-    if history_days:
+    if history_days is not None:
         start = today - datetime.timedelta(days=history_days)
-    elif history_start:
+    elif history_start is not None:
         start = datetime.datetime.strptime(history_start, '%Y-%m-%d').date()
 
     days_ago = (today - start).days
