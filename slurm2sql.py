@@ -467,7 +467,6 @@ def get_history(db, sacct_filter=['-a'],
     today = datetime.date.today()
     if history is not None:
         start = now - datetime.timedelta(seconds=slurmtime(history))
-        print('start=', start)
     elif history_days is not None:
         start = datetime.datetime.combine(today - datetime.timedelta(days=history_days), datetime.time())
     elif history_start is not None:
