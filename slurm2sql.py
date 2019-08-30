@@ -46,15 +46,21 @@ def slurmtime(x):
     """Parse slurm time of format [dd-[hh:]]mm:ss"""
     if not x: return None
     seconds = 0
+    # The anchor is different if there is '-' or not.  With '-' it is [dd]-hh[:mm[:ss]].  Without it is mm[:ss] first, then hh:mm:ss
     if '-' in x:
         days, time_ = x.split('-', 1)
         seconds += int(days) * 24 * 3600
+        hms = time_.split(':')
+        if len(hms) >= 1:   seconds += 3600 * int(hms[0])    # hour
+        if len(hms) >= 2:   seconds += 60   * float(hms[1])  # min
+        if len(hms) >= 3:   seconds +=        int(hms[2])    # sec
     else:
         time_ = x
-    hms = time_.split(':')
-    if len(hms) >= 3:   seconds += int(hms[-3])*3600
-    if len(hms) >= 2:   seconds += int(hms[-2])*60
-    if len(hms) >= 1:   seconds += float(hms[-1])
+        hms = time_.split(':')
+        # If only a single number is given, it is interperted as minutes
+        if len(hms) >= 3:   seconds += 3600 * int(hms[-3])        # hour
+        if len(hms) >= 2:   seconds +=        float(hms[-1])       # sec
+        if len(hms) >= 1:   seconds += 60   * int(hms[-2] if len(hms)>=2 else hms[-1])  # min
     return seconds
 
 def str_unknown(x):

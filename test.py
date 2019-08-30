@@ -116,6 +116,17 @@ def test_metric_units():
     assert slurm2sql.float_metric('2P') == 2 * 1000**5
     assert isinstance(slurm2sql.float_metric('2k'), float)
 
+def test_slurm_time():
+    assert slurm2sql.slurmtime('1:00:00') == 3600
+    assert slurm2sql.slurmtime('1:10:00') == 3600 + 600
+    assert slurm2sql.slurmtime('1:00:10') == 3600 + 10
+    assert slurm2sql.slurmtime('00:10') == 10
+    assert slurm2sql.slurmtime('10:10') == 600 + 10
+    assert slurm2sql.slurmtime('10') == 60 * 10  # default is min
+    assert slurm2sql.slurmtime('3-10:00') == 3600*24*3 + 10*3600
+    assert slurm2sql.slurmtime('3-13:10:00') == 3600*24*3 + 13*3600 + 600
+    assert slurm2sql.slurmtime('3-13:10') == 3600*24*3 + 13*3600 + 600
+    assert slurm2sql.slurmtime('3-13') == 3600*24*3 + 13*3600
 
 
 #
