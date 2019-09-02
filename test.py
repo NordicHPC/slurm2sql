@@ -76,6 +76,17 @@ def test_quiet(db, data1, caplog, capfd):
     assert captured.out == ""
     assert captured.err == ""
 
+def test_time(db, data1):
+    slurm2sql.main(['dummy'], raw_sacct=data1, db=db)
+    r = db.execute("SELECT Time FROM slurm WHERE JobID='43974388';").fetchone()[0]
+    assert r == '2019-08-01T02:02:39'
+    # Submit defined, Start defined, End='Unknown' --> timestamp should be "now"
+    r = db.execute("SELECT Time FROM slurm WHERE JobID='43977780';").fetchone()[0]
+    assert time.mktime(time.strptime(r, '%Y-%m-%dT%H:%M:%S')) >= time.time() - 5
+    # Job step: Submit defined, Start='Unknown', End='Unknown' --> Time should equal Submit
+    r = db.execute("SELECT Time FROM slurm WHERE JobID='43977780.batch';").fetchone()[0]
+    assert r == '2019-08-01T00:35:27'
+
 
 #
 # Test command line

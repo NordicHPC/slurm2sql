@@ -120,6 +120,22 @@ class linefunc(object):
     linefunc = True
 
 # Submit, start, and end times as unixtimes
+class slurmDefaultTime(linefunc):
+    @staticmethod
+    def calc(row):
+        """Latest active time.
+
+        All jobs in sacct are already started, so this is either current
+        time or end time.
+        """
+        if row['End'] != 'Unknown':
+            return row['End']
+        if row['Start'] != 'Unknown':
+            # Currently running, return current time since it's constantly updated.
+            return time.strftime("%Y-%m-%dT%H:%M:%S")
+        # Return submit time, since there is nothing else.
+        return row['Submit']
+
 class slurmSubmitTS(linefunc):
     @staticmethod
     def calc(row):
@@ -314,6 +330,7 @@ COLUMNS = {
     'State': str,                       # Job state
     'Timelimit': slurmtime,             # Timelimit specified by user
     'Elapsed': slurmtime,               # Walltime of the job
+    '_Time': slurmDefaultTime,          # Genalized time, max(Current, Start, End)
     'Submit': str_unknown,              # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
     'Start': str_unknown,               # Same, job start time
     'End': str_unknown,                 # Same, job end time
@@ -506,6 +523,8 @@ def sacct(slurm_cols, sacct_filter):
 def create_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start ON slurm (Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Start)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start ON slurm (Time)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Time)')
     db.execute('ANALYZE;')
     db.commit()
 
