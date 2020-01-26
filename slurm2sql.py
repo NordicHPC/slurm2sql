@@ -214,6 +214,7 @@ class slurmGPUMem(linefunc):
         comment = row['Comment']
         if not comment.strip():  return
         if 'No GPU stats' in comment:  return
+        if comment == 'abort': return
         comment = json.loads(comment)
         if 'gpu_mem_max' not in comment:  return
         return comment.get('gpu_mem_max') * (2**20)
@@ -224,6 +225,7 @@ class slurmGPUUtil(linefunc):
         comment = row['Comment']
         if not comment.strip(): return
         if 'No GPU stats' in comment:  return
+        if comment == 'abort': return
         comment = json.loads(comment)
         if 'gpu_util' not in comment:  return
         return comment['gpu_util']/100.
@@ -234,6 +236,7 @@ class slurmGPUCount(linefunc):
         comment = row['Comment']
         if not comment.strip():        return
         if 'No GPU stats' in comment:  return
+        if comment == 'abort': return
         comment = json.loads(comment)
         return comment.get('ngpu')
 
