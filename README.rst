@@ -131,6 +131,17 @@ them.  For other columns, check ``man sacct``.
 * ``CPUEff``: CPU efficiency (0.0-1.0).  All the same caveats as above
   apply: test before trusting.
 
+Quick reference of the other most important columns from the
+accounting database:
+
+* ``Elapsed``: Wall clock time
+
+* ``CPUTime``: Reserved CPU time (Elapsed * number of CPUs).  CPUEff ≈
+  TotalCPU/CPUTime = TotalCPU/(NCPUs x Elapsed)
+
+* ``TotalCPU``: SystemCPU + TotalCPU, seconds of productive work.
+
+
 
 
 Development and maintenance
