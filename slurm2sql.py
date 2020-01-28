@@ -241,6 +241,15 @@ class slurmGPUCount(linefunc):
         return comment.get('ngpu')
 
 # Job ID related stuff
+class slurmJobIDBase(linefunc):
+    """The JobID without the StepID part (removes everything after a '.')"""
+    @staticmethod
+    def calc(row):
+        idx = row['JobID'].find('.')
+        if idx == -1:
+            return row['JobID']
+        return row['JobID'][:idx]
+
 class slurmJobIDParent(linefunc):
     """The JobID without any . or _"""
     @staticmethod
@@ -323,6 +332,7 @@ COLUMNS = {
     'JobIDRaw': str,                    # Actual job ID, including of array jobs.
     'JobName': str,                     # Free-form text name of the job
     '_ArrayID': slurmArrayID,           # "Array" component of "Job_Array.Step"
+    '_JobIDBase': slurmJobIDBase,       # JobID without the step (everything after .)
     '_StepID': slurmStepID,             # "Step" component of above
     '_JobIDParent': slurmJobIDParent,   # Just the Job part of "Job_Array" for array jobs
     'User': str,                        # Username
@@ -528,6 +538,7 @@ def create_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start ON slurm (Time)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Time)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_jobidbase ON slurm (JobIDBase)')
     db.execute('ANALYZE;')
     db.commit()
 

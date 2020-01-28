@@ -85,6 +85,10 @@ Below are some notable columns which do not exist in sacct.  It's good
 to verify that any of our custom columns make sense before trusting
 them.  For other columns, check ``man sacct``.
 
+* ``JobIDBase``: The JobID, but without any step attached to it.
+  (Removes everything after ``.`` in the JobID).  Necessary for
+  linking job step records.
+
 * ``ArrayID``: The Array ID of a job (``JobID_ArrayID.StepID``).
 
 * ``StepID``: See above.  If you SQL filter for ``StepID is null`` you
