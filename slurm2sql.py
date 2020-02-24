@@ -40,7 +40,7 @@ def nullstr_strip(x):
     """str or None"""
     return str(x).strip() if x else None
 
-def timestamp(x):
+def unixtime(x):
     """Timestamp in local time, converted to unixtime"""
     if not x:           return None
     if x == 'Unknown':  return None
@@ -136,20 +136,26 @@ class slurmDefaultTime(linefunc):
         # Return submit time, since there is nothing else.
         return row['Submit']
 
+class slurmDefaultTimeTS(linefunc):
+
+    def calc(row):
+        """Lastest active time (see above), unixtime."""
+        return unixtime(slurmDefaultTime.calc(row))
+
 class slurmSubmitTS(linefunc):
     @staticmethod
     def calc(row):
-        return timestamp(row['Submit'])
+        return unixtime(row['Submit'])
 
 class slurmStartTS(linefunc):
     @staticmethod
     def calc(row):
-        return timestamp(row['Start'])
+        return unixtime(row['Start'])
 
 class slurmEndTS(linefunc):
     @staticmethod
     def calc(row):
-        return timestamp(row['End'])
+        return unixtime(row['End'])
 
 # Memory stuff
 class slurmMemNode(linefunc):
@@ -241,33 +247,42 @@ class slurmGPUCount(linefunc):
         return comment.get('ngpu')
 
 # Job ID related stuff
-class slurmJobIDBase(linefunc):
-    """The JobID without the StepID part (removes everything after a '.')"""
-    @staticmethod
-    def calc(row):
-        idx = row['JobID'].find('.')
-        if idx == -1:
-            return row['JobID']
-        return row['JobID'][:idx]
-
-class slurmJobIDParent(linefunc):
+class slurmJobIDplain(linefunc):
     """The JobID without any . or _"""
     @staticmethod
     def calc(row):
         return int(row['JobID'].split('_')[0].split('.')[0])
 
-class slurmArrayID(linefunc):
+class slurmJobIDrawplain(linefunc):
+    """The JobID without any . or _"""
+    @staticmethod
+    def calc(row):
+        return int(row['JobIDRaw'].split('_')[0].split('.')[0])
+
+class slurmJobIDRawnostep(linefunc):
+    """The JobID without any . or _"""
+    @staticmethod
+    def calc(row):
+        return int(row['JobIDRaw'].split('_')[0].split('.')[0])
+
+class slurmArrayTaskID(linefunc):
     @staticmethod
     def calc(row):
         if '_' not in row['JobID']:  return
         if '[' in row['JobID']:      return
         return int(row['JobID'].split('_')[1].split('.')[0])
 
-class slurmStepID(linefunc):
+class slurmJobStep(linefunc):
     @staticmethod
     def calc(row):
         if '.' not in row['JobID']:  return
-        return row['JobID'].split('.')[-1]
+        return row['JobID'].split('.')[-1]  # not necessarily an integer
+
+class slurmJobIDslurm(linefunc):
+    """The JobID field as slurm gives it, including _ and ."""
+    @staticmethod
+    def calc(row):
+        return row['JobID']
 
 # Efficiency stuff
 class slurmMemEff(linefunc):
@@ -328,13 +343,20 @@ class slurmExitSignal(linefunc):
 # underscore.
 COLUMNS = {
     # Basic job metadata
-    'JobID': str,                       # Slurm Job ID or 'Job_Array'
-    'JobIDRaw': str,                    # Actual job ID, including of array jobs.
+    #  Job IDs are of the forms (from sacct man page):
+    #   - JobID.JobStep
+    #   - ArrayJobID_ArrayTaskID.JobStep
+    # And the below is consistent with this.
+    'JobID': slurmJobIDrawplain,        # Integer JobID (for arrays JobIDRaw),
+                                        # without array/step suffixes.
+    '_ArrayJobID': slurmJobIDplain,     # Same job id for all jobs in an array.
+                                        # If not array, same as JobID
+    '_ArrayTaskID': slurmArrayTaskID,   # Part between '_' and '.'
+    '_JobStep': slurmJobStep,           # Part after '.'
+    '_JobIDSlurm': slurmJobIDslurm,     # JobID directly as Slurm presents it
+                                        # (with '_' and '.')
+    #'JobIDRawSlurm': str,               #
     'JobName': str,                     # Free-form text name of the job
-    '_ArrayID': slurmArrayID,           # "Array" component of "Job_Array.Step"
-    '_JobIDBase': slurmJobIDBase,       # JobID without the step (everything after .)
-    '_StepID': slurmStepID,             # "Step" component of above
-    '_JobIDParent': slurmJobIDParent,   # Just the Job part of "Job_Array" for array jobs
     'User': str,                        # Username
     'Group': str,                       # Group
     'Account': str,                     # Account
@@ -343,13 +365,14 @@ COLUMNS = {
     'State': str,                       # Job state
     'Timelimit': slurmtime,             # Timelimit specified by user
     'Elapsed': slurmtime,               # Walltime of the job
-    '_Time': slurmDefaultTime,          # Genalized time, max(Current, Start, End)
-    'Submit': str_unknown,              # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
-    'Start': str_unknown,               # Same, job start time
-    'End': str_unknown,                 # Same, job end time
-    '_SubmitTS': slurmSubmitTS,         # Same as above three, unixtime
-    '_StartTS': slurmStartTS,
-    '_EndTS': slurmEndTS,
+    #'_Time': slurmDefaultTime,          # Genalized time, max(Submit, End, (current if started))
+    #'Submit': str_unknown,              # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
+    #'Start': str_unknown,               # Same, job start time
+    #'End': str_unknown,                 # Same, job end time
+    '_Time': slurmDefaultTimeTS,        # unixtime: Genalized time, max(Submit, End, (current if started))
+    'Submit': slurmSubmitTS,            # unixtime: Submit
+    'Start': slurmStartTS,              # unixtime: Start
+    'End': slurmEndTS,                  # unixtime: End
     'Partition': str,                   # Partition
     '_ExitCodeRaw': slurmExitCodeRaw,   # ExitStatus:Signal
     'ExitCode': slurmExitCode,        # ExitStatus from above, int
@@ -410,10 +433,12 @@ COLUMNS = {
     '_ReqGPUS': slurmReqGPU,            # Number of GPUS requested
     'Comment': nullstr_strip,           # Slurm Comment field (at Aalto used for GPU stats)
     '_GPUMem': slurmGPUMem,             # GPU mem extracted from comment field
-    '_GPUEff': slurmGPUEff,           # GPU utilization (0.0 to 1.0) extracted from comment field
+    '_GPUEff': slurmGPUEff,             # GPU utilization (0.0 to 1.0) extracted from comment field
     '_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     }
-COLUMNS_EXTRA = ['ConsumedEnergyRaw']
+# Everything above that does not begin with '_' is queried from sacct.
+# These extra columns are added (don't duplicate with the above!)
+COLUMNS_EXTRA = ['ConsumedEnergyRaw', 'JobIDRaw']
 
 
 
@@ -434,6 +459,9 @@ def main(argv, db=None, raw_sacct=None):
                         help="Day-by-day collect history, starting this many days ago.")
     parser.add_argument('--history-start',
                         help="Day-by-day collect history, starting on this day.")
+    parser.add_argument('--history-end',
+                        help="Day-by-day collect history ends on this day.  Must include one "
+                             "of the other history options to have any effect.")
     parser.add_argument('--jobs-only', action='store_true',
                         help="Don't include job steps but only the man jobs")
     parser.add_argument('--quiet', '-q', action='store_true',
@@ -464,6 +492,7 @@ def main(argv, db=None, raw_sacct=None):
                             history=args.history,
                             history_days=args.history_days,
                             history_start=args.history_start,
+                            history_end=args.history_end,
                             jobs_only=args.jobs_only,
                             raw_sacct=raw_sacct)
 
@@ -483,7 +512,7 @@ def main(argv, db=None, raw_sacct=None):
 
 
 def get_history(db, sacct_filter=['-a'],
-                history=None, history_days=None, history_start=None,
+                history=None, history_days=None, history_start=None, history_end=None,
                 jobs_only=False, raw_sacct=None):
     """Get history for a certain period of days.
 
@@ -501,10 +530,19 @@ def get_history(db, sacct_filter=['-a'],
         start = datetime.datetime.combine(today - datetime.timedelta(days=history_days), datetime.time())
     elif history_start is not None:
         start = datetime.datetime.strptime(history_start, '%Y-%m-%d')
+    if history_end is not None:
+        stop = datetime.datetime.strptime(history_end, '%Y-%m-%d')
+    else:
+        class stop(object):
+            """When used with <=, compare to 'now' instead of a fixed time"""
+            # For when import takes a long time
+            def __ge__(self, other): # 'other <= self' operator, swapped
+                return other <= datetime.datetime.now()
+        stop = stop()
 
     days_ago = (now - start).days
     day_interval = 1
-    while start <= now:
+    while start <= stop:
         end = start+datetime.timedelta(days=day_interval)
         new_filter = sacct_filter + [
             '-S', start.strftime('%Y-%m-%dT%H:%M:%S'),
@@ -536,9 +574,8 @@ def sacct(slurm_cols, sacct_filter):
 def create_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start ON slurm (Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Start)')
-    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start ON slurm (Time)')
-    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Time)')
-    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_jobidbase ON slurm (JobIDBase)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_time ON slurm (Time)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_time ON slurm (User, Time)')
     db.execute('ANALYZE;')
     db.commit()
 
@@ -562,7 +599,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     Returns: the number of errors
     """
     create_columns = ', '.join('"'+c.strip('_')+'"' for c in COLUMNS)
-    create_columns = create_columns.replace('JobIDRaw"', 'JobIDRaw" UNIQUE')
+    create_columns = create_columns.replace('JobIDSlurm"', 'JobIDSlurm" UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where StepID is null;')
     db.execute('PRAGMA journal_mode = WAL;')
@@ -608,7 +645,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
 
         # If --jobs-only, then skip all job steps (sacct updates the
         # mem/cpu usage on the allocation itself already)
-        step_id = slurmStepID.calc(line)
+        step_id = slurmJobStep.calc(line)
         if jobs_only and step_id is not None:
             continue
 

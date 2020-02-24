@@ -85,28 +85,51 @@ Below are some notable columns which do not exist in sacct.  It's good
 to verify that any of our custom columns make sense before trusting
 them.  For other columns, check ``man sacct``.
 
-* ``JobIDBase``: The JobID, but without any step attached to it.
-  (Removes everything after ``.`` in the JobID).  Necessary for
-  linking job step records.
+* ``Time``: approximation of last active time of a job.  The first of
+  these that exists: ``End``, ``Start``, ``Submitted``.  This is
+  intended to be used when you need to classify a job by when it ran,
+  but you don't care to be that specific.  (Only the Time column is
+  indexed by default, not the other times)
 
-* ``ArrayID``: The Array ID of a job (``JobID_ArrayID.StepID``).
-
-* ``StepID``: See above.  If you SQL filter for ``StepID is null`` you
-  get only the main allocations.
-
-* ``JobIDParent``: The ``JobID`` of above, without the array index.
-
-* ``SubmitTS``, ``StartTS``, ``EndTS``: like the sacct equivalents,
+* ``Submit``, ``Start``, ``End``: like the sacct equivalents,
   but unixtime.  Assume that the sacct timestamps are in localtime of
-  the machine doing the conversion.
+  the machine doing the conversion.  (``slurm2sql.unixtime`` converts
+  slurm-format timestamp to unixtime)
+
+* Job IDs.  Slurm Job ID is by default of format
+  ``JobID.JobStep`` or ``ArrayJobID_ArrayTaskID.JobStep``.
+  Furthermore, each array job has a "Raw JobID" (different for each
+  job, and is an actual JobID) in addition to the "ArrayJobID" which
+  is the same for all jobs in an array.  We split all of these
+  different IDs into the following fields:
+
+  * ``JobID``: Only the integer Job ID, without the trailing array
+    tasks or job IDs.  For array jobs, this is the "Raw JobID" as
+    described above, use ``ArrayJobID`` to filter jobs that are the
+    same.  Integer
+
+  * ``ArrayJobID``: The common array ID for all jobs in an array -
+    only.  For non-array jobs, same as JobID.  Integer or null.
+
+  * ``ArrayTaskID``: As used above.  Integer on null.
+
+  * ``JobStep``: Job step - only.  If you SQL filter for ``StepID is
+    null`` you get only the main allocations.  String.
+
+  * ``JobIDSlurm``: The raw output from sacct JobID field, including
+    ``.`` and ``_``.  String.
+
+* ``ReqMem``: The raw slurm value in a format like "5Gn".  Instead of
+  parsing this, you probably want to use one of the other values below.
 
 * ``ReqMemNode``, ``ReqMemCPU``: Requested memory per node or CPU,
-  either taken from ReqMem (if it matches) or computed.  In Slurm, you
+  either taken from ReqMem (if it matches) or computed (you might want
+  to check our logic if you rely on this).  In Slurm, you
   can request memory either per-node or per-core, and this calculates
   the other one for you.
 
 * ``ReqMemType``: ``c`` if the user requested mem-per-core originally,
-  ``n`` if mem-per-node.  Extracted from ``ReqMem``
+  ``n`` if mem-per-node.  Extracted from ``ReqMem``.
 
 * ``ReqMemRaw``: The numeric value of the ``ReqMem``, whether it is
   ``c`` or ``n``.
@@ -114,7 +137,6 @@ them.  For other columns, check ``man sacct``.
 * ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqGRES``.
 
 * GPU information.  At Aalto we store GPU usage information in the
-
   ``Comment`` field in JSON of the form ``{"gpu_util": NN.NN,
   "gpu_max_mem": NN, "ngpu": N}``.  This extracts information from that.
 
