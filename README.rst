@@ -133,13 +133,12 @@ them.  For other columns, check ``man sacct``.
 * ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqGRES``.
 
 * GPU information.  At Aalto we store GPU usage information in the
-
   ``Comment`` field in JSON of the form ``{"gpu_util": NN.NN,
   "gpu_max_mem": NN, "ngpu": N}``.  This extracts information from that.
 
-  * ``GPUMem``: Max amount of memory used from any GPU>
+  * ``GPUMem``: Max amount of memory used from any GPU.
 
-  * ``GPUUtil``: Percent usage of the GPUs (0.0-1.0).
+  * ``GPUEff``: Percent usage of the GPUs (0.0-1.0).
 
   * ``NGPU``: Number of GPUs.  Should be the same as ``ReqGPU``, but
     who knows.

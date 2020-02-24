@@ -224,7 +224,7 @@ class slurmGPUMem(linefunc):
         if 'gpu_mem_max' not in comment:  return
         return comment.get('gpu_mem_max') * (2**20)
 
-class slurmGPUUtil(linefunc):
+class slurmGPUEff(linefunc):
     @staticmethod
     def calc(row):
         comment = row['Comment']
@@ -430,7 +430,7 @@ COLUMNS = {
     '_ReqGPUS': slurmReqGPU,            # Number of GPUS requested
     'Comment': nullstr_strip,           # Slurm Comment field (at Aalto used for GPU stats)
     '_GPUMem': slurmGPUMem,             # GPU mem extracted from comment field
-    '_GPUUtil': slurmGPUUtil,           # GPU utilization (0.0 to 1.0) extracted from comment field
+    '_GPUEff': slurmGPUEff,             # GPU utilization (0.0 to 1.0) extracted from comment field
     '_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     }
 # Everything above that does not begin with '_' is queried from sacct.
