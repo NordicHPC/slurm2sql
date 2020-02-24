@@ -136,6 +136,11 @@ class slurmDefaultTime(linefunc):
         # Return submit time, since there is nothing else.
         return row['Submit']
 
+class slurmDefaultTimeTS(linefunc):
+    def calc(row):
+        """Lastest active time (see above), unixtime."""
+        return timestamp(slurmDefaultTime.calc(row))
+
 class slurmSubmitTS(linefunc):
     @staticmethod
     def calc(row):
@@ -360,7 +365,8 @@ COLUMNS = {
     'Submit': str_unknown,              # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
     'Start': str_unknown,               # Same, job start time
     'End': str_unknown,                 # Same, job end time
-    '_SubmitTS': slurmSubmitTS,         # Same as above three, unixtime
+    '_TimeTS': slurmDefaultTimeTS,      # Same as above four, unixtime.
+    '_SubmitTS': slurmSubmitTS,
     '_StartTS': slurmStartTS,
     '_EndTS': slurmEndTS,
     'Partition': str,                   # Partition
@@ -566,6 +572,8 @@ def create_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_time ON slurm (Time)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_time ON slurm (User, Time)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_timets ON slurm (TimeTS)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_timets ON slurm (User, TimeTS)')
     db.execute('ANALYZE;')
     db.commit()
 
