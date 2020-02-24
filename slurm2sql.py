@@ -40,7 +40,7 @@ def nullstr_strip(x):
     """str or None"""
     return str(x).strip() if x else None
 
-def timestamp(x):
+def unixtime(x):
     """Timestamp in local time, converted to unixtime"""
     if not x:           return None
     if x == 'Unknown':  return None
@@ -137,24 +137,25 @@ class slurmDefaultTime(linefunc):
         return row['Submit']
 
 class slurmDefaultTimeTS(linefunc):
+
     def calc(row):
         """Lastest active time (see above), unixtime."""
-        return timestamp(slurmDefaultTime.calc(row))
+        return unixtime(slurmDefaultTime.calc(row))
 
 class slurmSubmitTS(linefunc):
     @staticmethod
     def calc(row):
-        return timestamp(row['Submit'])
+        return unixtime(row['Submit'])
 
 class slurmStartTS(linefunc):
     @staticmethod
     def calc(row):
-        return timestamp(row['Start'])
+        return unixtime(row['Start'])
 
 class slurmEndTS(linefunc):
     @staticmethod
     def calc(row):
-        return timestamp(row['End'])
+        return unixtime(row['End'])
 
 # Memory stuff
 class slurmMemNode(linefunc):
@@ -361,14 +362,14 @@ COLUMNS = {
     'State': str,                       # Job state
     'Timelimit': slurmtime,             # Timelimit specified by user
     'Elapsed': slurmtime,               # Walltime of the job
-    '_Time': slurmDefaultTime,          # Genalized time, max(Current, Start, End)
-    'Submit': str_unknown,              # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
-    'Start': str_unknown,               # Same, job start time
-    'End': str_unknown,                 # Same, job end time
-    '_TimeTS': slurmDefaultTimeTS,      # Same as above four, unixtime.
-    '_SubmitTS': slurmSubmitTS,
-    '_StartTS': slurmStartTS,
-    '_EndTS': slurmEndTS,
+    #'_Time': slurmDefaultTime,          # Genalized time, max(Submit, End, (current if started))
+    #'Submit': str_unknown,              # Submit time in yyyy-mm-ddThh:mm:ss straight from slurm
+    #'Start': str_unknown,               # Same, job start time
+    #'End': str_unknown,                 # Same, job end time
+    '_Time': slurmDefaultTimeTS,        # unixtime: Genalized time, max(Submit, End, (current if started))
+    'Submit': slurmSubmitTS,            # unixtime: Submit
+    'Start': slurmStartTS,              # unixtime: Start
+    'End': slurmEndTS,                  # unixtime: End
     'Partition': str,                   # Partition
     '_ExitCodeRaw': slurmExitCodeRaw,   # ExitStatus:Signal
     'ExitCode': slurmExitCode,        # ExitStatus from above, int
@@ -572,8 +573,6 @@ def create_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_time ON slurm (Time)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_time ON slurm (User, Time)')
-    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_timets ON slurm (TimeTS)')
-    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_timets ON slurm (User, TimeTS)')
     db.execute('ANALYZE;')
     db.commit()
 

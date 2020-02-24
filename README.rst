@@ -91,9 +91,10 @@ them.  For other columns, check ``man sacct``.
   but you don't care to be that specific.  (Only the Time column is
   indexed by default, not the other times)
 
-* ``SubmitTS``, ``StartTS``, ``EndTS``: like the sacct equivalents,
+* ``Submit``, ``Start``, ``End``: like the sacct equivalents,
   but unixtime.  Assume that the sacct timestamps are in localtime of
-  the machine doing the conversion.
+  the machine doing the conversion.  (``slurm2sql.unixtime`` converts
+  slurm-format timestamp to unixtime)
 
 * Job IDs.  Slurm Job ID is by default of format
   ``JobID.JobStep`` or ``ArrayJobID_ArrayTaskID.JobStep``.
