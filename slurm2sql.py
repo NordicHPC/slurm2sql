@@ -523,7 +523,12 @@ def get_history(db, sacct_filter=['-a'],
     if history_end is not None:
         stop = datetime.datetime.strptime(history_end, '%Y-%m-%d')
     else:
-        stop = now
+        class stop(object):
+            """When used with <=, compare to 'now' instead of a fixed time"""
+            # For when import takes a long time
+            def __ge__(self, other): # 'other <= self' operator, swapped
+                return other <= datetime.datetime.now()
+        stop = stop()
 
     days_ago = (now - start).days
     day_interval = 1
