@@ -601,7 +601,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     create_columns = ', '.join('"'+c.strip('_')+'"' for c in COLUMNS)
     create_columns = create_columns.replace('JobIDSlurm"', 'JobIDSlurm" UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
-    db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where StepID is null;')
+    db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where JobStep is null;')
     db.execute('PRAGMA journal_mode = WAL;')
     db.commit()
     c = db.cursor()
