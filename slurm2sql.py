@@ -421,6 +421,9 @@ def main(argv, db=None, raw_sacct=None):
                         help="Day-by-day collect history, starting this many days ago.")
     parser.add_argument('--history-start',
                         help="Day-by-day collect history, starting on this day.")
+    parser.add_argument('--history-end',
+                        help="Day-by-day collect history ends on this day.  Must include one "
+                             "of the other history options to have any effect.")
     parser.add_argument('--jobs-only', action='store_true',
                         help="Don't include job steps but only the man jobs")
     parser.add_argument('--quiet', '-q', action='store_true',
@@ -451,6 +454,7 @@ def main(argv, db=None, raw_sacct=None):
                             history=args.history,
                             history_days=args.history_days,
                             history_start=args.history_start,
+                            history_end=args.history_end,
                             jobs_only=args.jobs_only,
                             raw_sacct=raw_sacct)
 
@@ -470,7 +474,7 @@ def main(argv, db=None, raw_sacct=None):
 
 
 def get_history(db, sacct_filter=['-a'],
-                history=None, history_days=None, history_start=None,
+                history=None, history_days=None, history_start=None, history_end=None,
                 jobs_only=False, raw_sacct=None):
     """Get history for a certain period of days.
 
@@ -488,10 +492,14 @@ def get_history(db, sacct_filter=['-a'],
         start = datetime.datetime.combine(today - datetime.timedelta(days=history_days), datetime.time())
     elif history_start is not None:
         start = datetime.datetime.strptime(history_start, '%Y-%m-%d')
+    if history_end is not None:
+        stop = datetime.datetime.strptime(history_end, '%Y-%m-%d')
+    else:
+        stop = now
 
     days_ago = (now - start).days
     day_interval = 1
-    while start <= now:
+    while start <= stop:
         end = start+datetime.timedelta(days=day_interval)
         new_filter = sacct_filter + [
             '-S', start.strftime('%Y-%m-%dT%H:%M:%S'),
