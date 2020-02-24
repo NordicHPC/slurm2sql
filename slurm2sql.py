@@ -137,7 +137,7 @@ class slurmDefaultTime(linefunc):
         return row['Submit']
 
 class slurmDefaultTimeTS(linefunc):
-
+    @staticmethod
     def calc(row):
         """Lastest active time (see above), unixtime."""
         return unixtime(slurmDefaultTime.calc(row))
