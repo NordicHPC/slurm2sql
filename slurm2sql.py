@@ -531,8 +531,8 @@ def sacct(slurm_cols, sacct_filter):
 def create_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start ON slurm (Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Start)')
-    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start ON slurm (Time)')
-    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Time)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_time ON slurm (Time)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_time ON slurm (User, Time)')
     db.execute('ANALYZE;')
     db.commit()
 

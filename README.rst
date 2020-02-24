@@ -85,6 +85,12 @@ Below are some notable columns which do not exist in sacct.  It's good
 to verify that any of our custom columns make sense before trusting
 them.  For other columns, check ``man sacct``.
 
+* ``Time``: approximation of last active time of a job.  The first of
+  these that exists: ``End``, ``Start``, ``Submitted``.  This is
+  intended to be used when you need to classify a job by when it ran,
+  but you don't care to be that specific.  (Only the Time column is
+  indexed by default, not the other times)
+
 * ``ArrayID``: The Array ID of a job (``JobID_ArrayID.StepID``).
 
 * ``StepID``: See above.  If you SQL filter for ``StepID is null`` you
