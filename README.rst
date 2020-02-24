@@ -91,16 +91,32 @@ them.  For other columns, check ``man sacct``.
   but you don't care to be that specific.  (Only the Time column is
   indexed by default, not the other times)
 
-* ``ArrayID``: The Array ID of a job (``JobID_ArrayID.StepID``).
-
-* ``StepID``: See above.  If you SQL filter for ``StepID is null`` you
-  get only the main allocations.
-
-* ``JobIDParent``: The ``JobID`` of above, without the array index.
-
 * ``SubmitTS``, ``StartTS``, ``EndTS``: like the sacct equivalents,
   but unixtime.  Assume that the sacct timestamps are in localtime of
   the machine doing the conversion.
+
+* Job IDs.  Slurm Job ID is by default of format
+  ``JobID.JobStep`` or ``ArrayJobID_ArrayTaskID.JobStep``.
+  Furthermore, each array job has a "Raw JobID" (different for each
+  job, and is an actual JobID) in addition to the "ArrayJobID" which
+  is the same for all jobs in an array.  We split all of these
+  different IDs into the following fields:
+
+  * ``JobID``: Only the integer Job ID, without the trailing array
+    tasks or job IDs.  For array jobs, this is the "Raw JobID" as
+    described above, use ``ArrayJobID`` to filter jobs that are the
+    same.  Integer
+
+  * ``ArrayJobID``: The common array ID for all jobs in an array -
+    only.  For non-array jobs, same as JobID.  Integer or null.
+
+  * ``ArrayTaskID``: As used above.  Integer on null.
+
+  * ``JobStep``: Job step - only.  If you SQL filter for ``StepID is
+    null`` you get only the main allocations.  String.
+
+  * ``JobIDSlurm``: The raw output from sacct JobID field, including
+    ``.`` and ``_``.  String.
 
 * ``ReqMemNode``, ``ReqMemCPU``: Requested memory per node or CPU,
   either taken from ReqMem (if it matches) or computed.  In Slurm, you

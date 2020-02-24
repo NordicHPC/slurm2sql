@@ -45,14 +45,14 @@ def data1():
 def test_slurm2sql_basic(db, data1):
     slurm2sql.slurm2sql(db, sacct_filter=[], raw_sacct=data1)
     r = db.execute("SELECT JobName, StartTS "
-                   "FROM slurm WHERE JobID='43974388';").fetchone()
+                   "FROM slurm WHERE JobID=43974388;").fetchone()
     assert r[0] == 'spawner-jupyterhub'
     assert r[1] == 1564601354
 
 def test_main(db, data1):
     slurm2sql.main(['dummy'], raw_sacct=data1, db=db)
     r = db.execute("SELECT JobName, StartTS "
-                   "FROM slurm WHERE JobID='43974388';").fetchone()
+                   "FROM slurm WHERE JobID=43974388;").fetchone()
     assert r[0] == 'spawner-jupyterhub'
     assert r[1] == 1564601354
     assert db.execute("SELECT count(*) from slurm;").fetchone()[0] == 5
@@ -78,13 +78,13 @@ def test_quiet(db, data1, caplog, capfd):
 
 def test_time(db, data1):
     slurm2sql.main(['dummy'], raw_sacct=data1, db=db)
-    r = db.execute("SELECT Time FROM slurm WHERE JobID='43974388';").fetchone()[0]
+    r = db.execute("SELECT Time FROM slurm WHERE JobID=43974388;").fetchone()[0]
     assert r == '2019-08-01T02:02:39'
     # Submit defined, Start defined, End='Unknown' --> timestamp should be "now"
-    r = db.execute("SELECT Time FROM slurm WHERE JobID='43977780';").fetchone()[0]
+    r = db.execute("SELECT Time FROM slurm WHERE JobID=43977780;").fetchone()[0]
     assert time.mktime(time.strptime(r, '%Y-%m-%dT%H:%M:%S')) >= time.time() - 5
     # Job step: Submit defined, Start='Unknown', End='Unknown' --> Time should equal Submit
-    r = db.execute("SELECT Time FROM slurm WHERE JobID='43977780.batch';").fetchone()[0]
+    r = db.execute("SELECT Time FROM slurm WHERE JobIDSlurm='43977780.batch';").fetchone()[0]
     assert r == '2019-08-01T00:35:27'
 
 

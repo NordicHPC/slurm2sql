@@ -238,24 +238,42 @@ class slurmGPUCount(linefunc):
         return comment.get('ngpu')
 
 # Job ID related stuff
-class slurmJobIDParent(linefunc):
+class slurmJobIDrawplain(linefunc):
     """The JobID without any . or _"""
     @staticmethod
     def calc(row):
         return int(row['JobID'].split('_')[0].split('.')[0])
 
-class slurmArrayID(linefunc):
+class slurmJobIDplain(linefunc):
+    """The JobID without any . or _"""
+    @staticmethod
+    def calc(row):
+        return int(row['JobIDRaw'].split('_')[0].split('.')[0])
+
+class slurmJobIDRawnostep(linefunc):
+    """The JobID without any . or _"""
+    @staticmethod
+    def calc(row):
+        return int(row['JobIDRaw'].split('_')[0].split('.')[0])
+
+class slurmArrayTaskID(linefunc):
     @staticmethod
     def calc(row):
         if '_' not in row['JobID']:  return
         if '[' in row['JobID']:      return
         return int(row['JobID'].split('_')[1].split('.')[0])
 
-class slurmStepID(linefunc):
+class slurmJobStep(linefunc):
     @staticmethod
     def calc(row):
         if '.' not in row['JobID']:  return
-        return row['JobID'].split('.')[-1]
+        return row['JobID'].split('.')[-1]  # not necessarily an integer
+
+class slurmJobIDslurm(linefunc):
+    """The JobID field as slurm gives it, including _ and ."""
+    @staticmethod
+    def calc(row):
+        return row['JobID']
 
 # Efficiency stuff
 class slurmMemEff(linefunc):
@@ -316,12 +334,20 @@ class slurmExitSignal(linefunc):
 # underscore.
 COLUMNS = {
     # Basic job metadata
-    'JobID': str,                       # Slurm Job ID or 'Job_Array'
-    'JobIDRaw': str,                    # Actual job ID, including of array jobs.
+    #  Job IDs are of the forms (from sacct man page):
+    #   - JobID.JobStep
+    #   - ArrayJobID_ArrayTaskID.JobStep
+    # And the below is consistent with this.
+    'JobID': slurmJobIDrawplain,        # Integer JobID (for arrays JobIDRaw),
+                                        # without array/step suffixes.
+    '_ArrayJobID': slurmJobIDrawplain,  # Same job id for all jobs in an array.
+                                        # If not array, same as JobID
+    '_ArrayTaskID': slurmArrayTaskID,   # Part between '_' and '.'
+    '_JobStep': slurmJobStep,           # Part after '.'
+    '_JobIDSlurm': slurmJobIDslurm,     # JobID directly as Slurm presents it
+                                        # (with '_' and '.')
+    #'JobIDRawSlurm': str,               #
     'JobName': str,                     # Free-form text name of the job
-    '_ArrayID': slurmArrayID,           # "Array" component of "Job_Array.Step"
-    '_StepID': slurmStepID,             # "Step" component of above
-    '_JobIDParent': slurmJobIDParent,   # Just the Job part of "Job_Array" for array jobs
     'User': str,                        # Username
     'Group': str,                       # Group
     'Account': str,                     # Account
@@ -400,7 +426,9 @@ COLUMNS = {
     '_GPUUtil': slurmGPUUtil,           # GPU utilization (0.0 to 1.0) extracted from comment field
     '_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     }
-COLUMNS_EXTRA = ['ConsumedEnergyRaw']
+# Everything above that does not begin with '_' is queried from sacct.
+# These extra columns are added (don't duplicate with the above!)
+COLUMNS_EXTRA = ['ConsumedEnergyRaw', 'JobIDRaw']
 
 
 
@@ -556,7 +584,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     Returns: the number of errors
     """
     create_columns = ', '.join('"'+c.strip('_')+'"' for c in COLUMNS)
-    create_columns = create_columns.replace('JobIDRaw"', 'JobIDRaw" UNIQUE')
+    create_columns = create_columns.replace('JobIDSlurm"', 'JobIDSlurm" UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where StepID is null;')
     db.execute('PRAGMA journal_mode = WAL;')
@@ -602,7 +630,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
 
         # If --jobs-only, then skip all job steps (sacct updates the
         # mem/cpu usage on the allocation itself already)
-        step_id = slurmStepID.calc(line)
+        step_id = slurmJobStep.calc(line)
         if jobs_only and step_id is not None:
             continue
 
