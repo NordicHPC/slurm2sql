@@ -119,13 +119,17 @@ them.  For other columns, check ``man sacct``.
   * ``JobIDSlurm``: The raw output from sacct JobID field, including
     ``.`` and ``_``.  String.
 
+* ``ReqMem``: The raw slurm value in a format like "5Gn".  Instead of
+  parsing this, you probably want to use one of the other values below.
+
 * ``ReqMemNode``, ``ReqMemCPU``: Requested memory per node or CPU,
-  either taken from ReqMem (if it matches) or computed.  In Slurm, you
+  either taken from ReqMem (if it matches) or computed (you might want
+  to check our logic if you rely on this).  In Slurm, you
   can request memory either per-node or per-core, and this calculates
   the other one for you.
 
 * ``ReqMemType``: ``c`` if the user requested mem-per-core originally,
-  ``n`` if mem-per-node.  Extracted from ``ReqMem``
+  ``n`` if mem-per-node.  Extracted from ``ReqMem``.
 
 * ``ReqMemRaw``: The numeric value of the ``ReqMem``, whether it is
   ``c`` or ``n``.
