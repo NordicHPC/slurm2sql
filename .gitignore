@@ -2,3 +2,6 @@
 *.sqlite3
 *.sql
 /*.out
+/build
+/dist
+slurm2sql.egg-info/
