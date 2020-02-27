@@ -10,9 +10,10 @@ easily than the raw database or your own exports.
 
 
 Installation
------------
+------------
 
-There is only a single file with no dependencies.  Python3 is required.
+There is only a single file with no dependencies.  Python greater than
+2.7 is required.
 
 
 
