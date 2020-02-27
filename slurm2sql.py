@@ -444,7 +444,7 @@ COLUMNS_EXTRA = ['ConsumedEnergyRaw', 'JobIDRaw']
 
 
 
-def main(argv, db=None, raw_sacct=None):
+def main(argv=sys.argv[1:], db=None, raw_sacct=None):
     """Parse arguments and use the other API"""
     parser = argparse.ArgumentParser()
     parser.add_argument('db', help="Database filename to create or update")
