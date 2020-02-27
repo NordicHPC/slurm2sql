@@ -176,4 +176,10 @@ Development and maintenance
 
 This could be considered functional alpha right or almost beta now.
 
+Release process::
+
+  python setup.py sdist bdist_wheel
+  twine upload [--repository-url https://test.pypi.org/legacy/] dist/*0.9.0*
+
+
 Originally developed at Aalto University, Finland.
