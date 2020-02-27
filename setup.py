@@ -12,7 +12,7 @@ setuptools.setup(
     name="slurm2sql",
     version=version,
     author="Richard Darst",
-    author_email="rkd@zgib.net",
+    #author_email="",
     description="Import Slurm accounting database from sacct to sqlite3 database",
     long_description=long_description,
     #long_description_content_type="text/markdown", ReST is default
