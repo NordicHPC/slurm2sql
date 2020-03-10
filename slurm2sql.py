@@ -491,6 +491,7 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None):
 
     if args.verbose:
         logging.lastResort.setLevel(logging.DEBUG)
+    LOG.debug(args)
     if args.quiet:
         logging.lastResort.setLevel(logging.WARN)
 
