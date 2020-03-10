@@ -60,7 +60,9 @@ parser::
 Database format
 ---------------
 
-There is one table with name ``slurm``.
+There is one table with name ``slurm``.  There is one view
+``allocations`` which has only the jobs (not job steps) (``where
+JobStep is null``).
 
 There is one row for each item returned by ``sacct``.
 
@@ -82,7 +84,8 @@ All column values are converted to standard units: *bytes* (not MB,
 KB, etc), *seconds*, *fraction 0.0-1.0* for things like
 percentages.
 
-Below are some notable columns which do not exist in sacct.  It's good
+Below are some notable columns which do not exist in sacct (for the
+rest, check out the `sacct manual page <https://slurm.schedmd.com/sacct.html#lbAF>`_).  It's good
 to verify that any of our custom columns make sense before trusting
 them.  For other columns, check ``man sacct``.
 
