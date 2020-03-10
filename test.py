@@ -162,6 +162,10 @@ def test_slurm_time():
 
 def test_history_last_timestamp(db):
     """Test update_last_timestamp and get_last_timestamp functions"""
+    import io
+    # initialize db with null input - this just forces table creation.
+    slurm2sql.slurm2sql(db, raw_sacct=io.StringIO())
+    # Set last update and get it again immediately
     slurm2sql.update_last_timestamp(db, 13)
     assert slurm2sql.get_last_timestamp(db) == 13
 
