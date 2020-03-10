@@ -54,7 +54,7 @@ def datetime_timestamp(dt):
     - Only needed because we support python 2"""
     if hasattr(dt, 'timestamp'): # python3
         return dt.timestamp()
-    return time.mktime((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second))
+    return time.mktime(dt.timetuple())
 
 def slurmtime(x):
     """Parse slurm time of format [dd-[hh:]]mm:ss"""
