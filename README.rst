@@ -45,6 +45,14 @@ starting from a certain day, and ``--history=DD-HH:MM:SS`` starts
 collecting from a given interval of time ago (the time format is as in
 Slurm).
 
+To resume from where you left off, first run with one of the history
+options.  Then, you can do ``--history-resume`` (no ``-u`` needed) and
+it will continue fetching day-by-day from the time you last fetched::
+
+  slurm2sql.py --history-days=N -u sincejuly.sqlite3 -- -a
+  slurm2sql.py --history-resume sincejuly.sqlite3 -- -a
+
+
 
 It can also be used from Python as what is essentially a glorified
 parser::
