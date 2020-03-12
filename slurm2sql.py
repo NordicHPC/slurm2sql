@@ -48,6 +48,14 @@ def unixtime(x):
     if x == 'Unknown':  return None
     return time.mktime(time.strptime(x, '%Y-%m-%dT%H:%M:%S'))
 
+def datetime_timestamp(dt):
+    """Convert a datetime object to unixtime
+
+    - Only needed because we support python 2"""
+    if hasattr(dt, 'timestamp'): # python3
+        return dt.timestamp()
+    return time.mktime(dt.timetuple())
+
 def slurmtime(x):
     """Parse slurm time of format [dd-[hh:]]mm:ss"""
     if not x: return None
@@ -68,6 +76,13 @@ def slurmtime(x):
         if len(hms) >= 2:   seconds +=        float(hms[-1])       # sec
         if len(hms) >= 1:   seconds += 60   * int(hms[-2] if len(hms)>=2 else hms[-1])  # min
     return seconds
+
+def slurm_timestamp(x):
+    """Convert a datetime to the Slurm format of timestamp
+    """
+    if not isinstance(x, datetime.datetime):
+        x = datetime.datetime.fromtimestamp(x - 5)
+    return x.strftime('%Y-%m-%dT%H:%M:%S')
 
 def str_unknown(x):
     if x == 'Unknown': return None
@@ -457,6 +472,8 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None):
                              "instead insert or update rows")
     parser.add_argument('--history',
                         help="Scrape dd-hh:mm:ss or [hh:]mm:ss from the past to now (Slurm time format)")
+    parser.add_argument('--history-resume', action='store_true',
+                        help="Day-by-day collect history, starting from last collection.")
     parser.add_argument('--history-days', type=int,
                         help="Day-by-day collect history, starting this many days ago.")
     parser.add_argument('--history-start',
@@ -474,13 +491,14 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None):
 
     if args.verbose:
         logging.lastResort.setLevel(logging.DEBUG)
+    LOG.debug(args)
     if args.quiet:
         logging.lastResort.setLevel(logging.WARN)
 
     # db is only given as an argument in tests (normally)
     if db is None:
         # Delete existing database unless --update/-u is given
-        if not args.update and os.path.exists(args.db):
+        if not (args.update or args.history_resume) and os.path.exists(args.db):
             os.unlink(args.db)
         db = sqlite3.connect(args.db)
 
@@ -488,10 +506,12 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None):
 
     # If --history-days, get just this many days history
     if (args.history is not None
+        or args.history_resume
         or args.history_days is not None
         or args.history_start is not None):
         errors = get_history(db, sacct_filter=sacct_filter,
                             history=args.history,
+                            history_resume=args.history_resume,
                             history_days=args.history_days,
                             history_start=args.history_start,
                             history_end=args.history_end,
@@ -514,7 +534,8 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None):
 
 
 def get_history(db, sacct_filter=['-a'],
-                history=None, history_days=None, history_start=None, history_end=None,
+                history=None, history_resume=None, history_days=None,
+                history_start=None, history_end=None,
                 jobs_only=False, raw_sacct=None):
     """Get history for a certain period of days.
 
@@ -526,7 +547,17 @@ def get_history(db, sacct_filter=['-a'],
     errors = 0
     now = datetime.datetime.now().replace(microsecond=0)
     today = datetime.date.today()
-    if history is not None:
+    if history_resume:
+        try:
+            start = get_last_timestamp(db)
+        except sqlite3.OperationalError:
+            import traceback
+            traceback.print_exc()
+            print()
+            print("Error fetching last start time (see above)", file=sys.stderr)
+            exit(5)
+        start = datetime.datetime.fromtimestamp(start - 5)
+    elif history is not None:
         start = now - datetime.timedelta(seconds=slurmtime(history))
     elif history_days is not None:
         start = datetime.datetime.combine(today - datetime.timedelta(days=history_days), datetime.time())
@@ -541,15 +572,17 @@ def get_history(db, sacct_filter=['-a'],
     day_interval = 1
     while start <= stop:
         end = start+datetime.timedelta(days=day_interval)
+        end = end.replace(hour=0, minute=0, second=0, microsecond=0)
         new_filter = sacct_filter + [
-            '-S', start.strftime('%Y-%m-%dT%H:%M:%S'),
-            '-E', end.strftime('%Y-%m-%dT%H:%M:%S'),
+            '-S', slurm_timestamp(start),
+            '-E', slurm_timestamp(end),
             ]
         LOG.debug(new_filter)
         LOG.info("%s %s", days_ago, start.date() if history_days is not None else start)
         errors += slurm2sql(db, sacct_filter=new_filter, update=True, jobs_only=jobs_only,
                             raw_sacct=raw_sacct)
         db.commit()
+        update_last_timestamp(db, update_time=end)
         start = end
         days_ago -= day_interval
     return errors
@@ -598,6 +631,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     create_columns = ', '.join('"'+c.strip('_')+'"' for c in COLUMNS)
     create_columns = create_columns.replace('JobIDSlurm"', 'JobIDSlurm" UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
+    db.execute('CREATE TABLE IF NOT EXISTS meta_slurm_lastupdate (id INTEGER PRIMARY KEY, update_time REAL)')
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where JobStep is null;')
     db.execute('PRAGMA journal_mode = WAL;')
     db.commit()
@@ -666,6 +700,25 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
             db.commit()
     db.commit()
     return errors
+
+
+def update_last_timestamp(db, update_time=None):
+    """Update the last update time in the database, for resuming.
+
+    Updates the one row of the meta_slurm_lastupdate with the latest
+    unix timestamp, as passed as an argument (or now)
+    """
+    if update_time is None:
+        update_time = time.time()
+    if isinstance(update_time, datetime.datetime):
+        update_time = datetime_timestamp(update_time)
+    update_time = min(update_time, time.time())
+    db.execute("INSERT OR REPLACE INTO meta_slurm_lastupdate (id, update_time) VALUES (0, ?)", (update_time, ))
+    db.commit()
+
+def get_last_timestamp(db):
+    """Return the last update timestamp from the database"""
+    return db.execute('SELECT update_time FROM meta_slurm_lastupdate').fetchone()[0]
 
 
 if __name__ == "__main__":

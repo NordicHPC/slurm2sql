@@ -160,6 +160,35 @@ def test_slurm_time():
     assert slurm2sql.slurmtime('3-13:10') == 3600*24*3 + 13*3600 + 600
     assert slurm2sql.slurmtime('3-13') == 3600*24*3 + 13*3600
 
+def test_history_last_timestamp(db):
+    """Test update_last_timestamp and get_last_timestamp functions"""
+    import io
+    # initialize db with null input - this just forces table creation.
+    slurm2sql.slurm2sql(db, raw_sacct=io.StringIO())
+    # Set last update and get it again immediately
+    slurm2sql.update_last_timestamp(db, 13)
+    assert slurm2sql.get_last_timestamp(db) == 13
+
+def test_history_resume_basic(db, data1):
+    """Test --history-resume"""
+    # Run it once.  Is the update_time approximately now?
+    slurm2sql.main(['dummy', '--history-days=1'], raw_sacct=data1, db=db)
+    update_time = slurm2sql.get_last_timestamp(db)
+    assert abs(update_time - time.time()) < 5
+    # Wait 1s, is update time different?
+    time.sleep(1.1)
+    slurm2sql.main(['dummy', '--history-resume'], raw_sacct=data1, db=db)
+    assert update_time != slurm2sql.get_last_timestamp(db)
+
+def test_history_resume_timestamp(db, data1, caplog):
+    """Test --history-resume's exact timestamp"""
+    # Run once to get an update_time
+    slurm2sql.main(['dummy', '--history-days=1'], raw_sacct=data1, db=db)
+    update_time = slurm2sql.get_last_timestamp(db)
+    caplog.clear()
+    # Run again and make sure that we filter based on that update_time
+    slurm2sql.main(['dummy', '--history-resume'], raw_sacct=data1, db=db)
+    assert slurm2sql.slurm_timestamp(update_time) in caplog.text
 
 #
 # Test data generation
