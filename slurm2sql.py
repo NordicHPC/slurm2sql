@@ -238,7 +238,10 @@ class slurmGPUMem(linefunc):
         if not comment.strip():  return
         if 'No GPU stats' in comment:  return
         if comment == 'abort': return
-        comment = json.loads(comment)
+        try:
+            comment = json.loads(comment)
+        except:
+            return None
         if 'gpu_mem_max' not in comment:  return
         return comment.get('gpu_mem_max') * (2**20)
 
@@ -249,7 +252,10 @@ class slurmGPUEff(linefunc):
         if not comment.strip(): return
         if 'No GPU stats' in comment:  return
         if comment == 'abort': return
-        comment = json.loads(comment)
+        try:
+            comment = json.loads(comment)
+        except:
+            return None
         if 'gpu_util' not in comment:  return
         return comment['gpu_util']/100.
 
@@ -260,7 +266,10 @@ class slurmGPUCount(linefunc):
         if not comment.strip():        return
         if 'No GPU stats' in comment:  return
         if comment == 'abort': return
-        comment = json.loads(comment)
+        try:
+            comment = json.loads(comment)
+        except:
+            return None
         return comment.get('ngpu')
 
 # Job ID related stuff
