@@ -14,6 +14,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import re
 
 __version__ = '0.9.1.dev'
 
@@ -59,7 +60,9 @@ def datetime_timestamp(dt):
 def slurmtime(x):
     """Parse slurm time of format [dd-[hh:]]mm:ss"""
     if not x: return None
-    if x == "Partition_Limit": return None
+    # Ignore Non-time value such as 'UNLIMITED', 'Partition_Limit'
+    if not re.match(r'^[\d\-\.:]+$', x):
+        return None
     seconds = 0
     # The anchor is different if there is '-' or not.  With '-' it is [dd]-hh[:mm[:ss]].  Without it is mm[:ss] first, then hh:mm:ss
     if '-' in x:
