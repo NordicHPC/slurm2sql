@@ -60,7 +60,7 @@ def slurmtime(x):
     """Parse slurm time of format [dd-[hh:]]mm:ss"""
     if not x: return None
     # Handle 'UNLIMITED' ,'Partition_Limit' in 'timelimit' field
-    if  x in ['Partition_Limit', 'UNLIMITED']:
+    if  x in {'Partition_Limit', 'UNLIMITED'}:
         return None
     seconds = 0
     # The anchor is different if there is '-' or not.  With '-' it is [dd]-hh[:mm[:ss]].  Without it is mm[:ss] first, then hh:mm:ss
