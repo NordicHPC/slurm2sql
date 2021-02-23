@@ -39,6 +39,15 @@ def data1():
     lines = open('tests/test-data1.txt')
     yield lines
 
+@pytest.fixture(scope='function')
+def data2():
+    """Test data set 2.
+
+    This is the same as data1, but removes the ReqGRES column (for slurm>=20.11)
+    """
+    lines = open('tests/test-data2.txt')
+    yield lines
+
 
 #
 # Tests
@@ -189,6 +198,25 @@ def test_history_resume_timestamp(db, data1, caplog):
     # Run again and make sure that we filter based on that update_time
     slurm2sql.main(['dummy', '--history-resume'], raw_sacct=data1, db=db)
     assert slurm2sql.slurm_timestamp(update_time) in caplog.text
+
+def test_slurm_version():
+    """Test slurm version detection"""
+    v = slurm2sql.slurm_version(cmd=['echo', 'slurm 20.11.1'])
+    assert v == (20, 11, 1)
+
+
+# Test slurm 20.11 version
+def test_slurm2011_gres(db, data2, monkeypatch):
+    """Test 20.11 compatibility, using ReqTRES instead of ReqGRES.
+
+    This asserts that the ReqGRES column is *not* in the database with Slurm > 20.11
+    """
+    monkeypatch.setattr(slurm2sql, 'slurm_version', lambda: (20, 12, 5))
+    test_slurm2sql_basic(db, data2)
+    with pytest.raises(sqlite3.OperationalError, match='no such column:'):
+        db.execute('SELECT ReqGRES FROM slurm;')
+
+
 
 #
 # Test data generation
