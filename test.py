@@ -33,14 +33,27 @@ def dbfile():
     with tempfile.NamedTemporaryFile() as dbfile:
         yield dbfile.name
 
+@pytest.fixture()
+def slurm_version(monkeypatch, slurm_version_number=(20, 10)):
+    print('Setting Slurm version to %s'%(slurm_version_number,))
+    monkeypatch.setattr(slurm2sql, 'slurm_version', lambda: slurm_version_number)
+    yield
+
+@pytest.fixture()
+def slurm_version_2011(monkeypatch, slurm_version_number=(20, 11, 1)):
+    print('Setting Slurm version to %s'%(slurm_version_number,))
+    monkeypatch.setattr(slurm2sql, 'slurm_version', lambda: slurm_version_number)
+    yield
+
+
 @pytest.fixture(scope='function')
-def data1():
+def data1(slurm_version):
     """Test data set 1"""
     lines = open('tests/test-data1.txt')
     yield lines
 
 @pytest.fixture(scope='function')
-def data2():
+def data2(slurm_version_2011):
     """Test data set 2.
 
     This is the same as data1, but removes the ReqGRES column (for slurm>=20.11)
@@ -169,7 +182,7 @@ def test_slurm_time():
     assert slurm2sql.slurmtime('3-13:10') == 3600*24*3 + 13*3600 + 600
     assert slurm2sql.slurmtime('3-13') == 3600*24*3 + 13*3600
 
-def test_history_last_timestamp(db):
+def test_history_last_timestamp(db, slurm_version):
     """Test update_last_timestamp and get_last_timestamp functions"""
     import io
     # initialize db with null input - this just forces table creation.
@@ -206,12 +219,12 @@ def test_slurm_version():
 
 
 # Test slurm 20.11 version
-def test_slurm2011_gres(db, data2, monkeypatch):
+#@pytest.mark.parametrize('slurm_version_number', [(20, 12, 5)])
+def test_slurm2011_gres(db, data2):
     """Test 20.11 compatibility, using ReqTRES instead of ReqGRES.
 
     This asserts that the ReqGRES column is *not* in the database with Slurm > 20.11
     """
-    monkeypatch.setattr(slurm2sql, 'slurm_version', lambda: (20, 12, 5))
     test_slurm2sql_basic(db, data2)
     with pytest.raises(sqlite3.OperationalError, match='no such column:'):
         db.execute('SELECT ReqGRES FROM slurm;')
