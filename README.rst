@@ -181,6 +181,20 @@ accounting database:
 
 
 
+Changelog
+---------
+
+development
+
+* Slurm >= 20.11 deprecates the ``AllocGRES`` and ``ReqGRES`` columns
+  (using ``Alloc/ReqTRES`` instead).
+  * From this slurm2sql version, a ReqTRES column will be requested
+    and databases will need to be re-created (or manually added to the
+    databases).
+  * If run on Slurm > 20.11, it will not request ReqGRES and only use
+    ReqTRES.
+
+
 
 Development and maintenance
 ---------------------------

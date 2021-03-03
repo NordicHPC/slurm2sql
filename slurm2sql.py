@@ -228,9 +228,13 @@ class slurmMemRaw(linefunc):
 class slurmReqGPU(linefunc):
     @staticmethod
     def calc(row):
-        gres = row['ReqGRES']
+        if 'ReqGRES' in row:
+            gres = row['ReqGRES']
+        else:
+            gres = row['ReqTRES']
         if not gres:  return None
-        m = re.search(r'gpu:(\d+)', gres)
+        # Slurm 20.11 uses gres= within ReqTRES (instead of ReqGRES)
+        m = re.search(r'gpu[:=](\d+)', gres)
         if m:
             return int(m.group(1))
 
@@ -416,7 +420,7 @@ COLUMNS = {
     'AllocNodes': nullint,              # Number of nodes (allocated, zero if not running yet)
 
     # Miscelaneous requested resources
-    #'ReqTRES': str,
+    'ReqTRES': str,
     'ReqGRES': str,                     # Raw GRES string
     'NTasks': nullint,
     #'AllocGRES'
@@ -640,7 +644,14 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
 
     Returns: the number of errors
     """
-    create_columns = ', '.join('"'+c.strip('_')+'"' for c in COLUMNS)
+    columns = COLUMNS.copy()
+
+    # Slurm > 20.11 deprecates ReqGRES, everything is put only into
+    # ReqTRES.  So don't fitch ReqGRES to avoid a warning.
+    if slurm_version() >= (20, 11):
+        del columns['ReqGRES']
+
+    create_columns = ', '.join('"'+c.strip('_')+'"' for c in columns)
     create_columns = create_columns.replace('JobIDSlurm"', 'JobIDSlurm" UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE TABLE IF NOT EXISTS meta_slurm_lastupdate (id INTEGER PRIMARY KEY, update_time REAL)')
@@ -649,7 +660,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     db.commit()
     c = db.cursor()
 
-    slurm_cols = tuple(c for c in list(COLUMNS.keys()) + COLUMNS_EXTRA if not c.startswith('_'))
+    slurm_cols = tuple(c for c in list(columns.keys()) + COLUMNS_EXTRA if not c.startswith('_'))
 
     # Read data from sacct, or interpert sacct_filter directly as
     # testdata if it has the attribute 'testdata'
@@ -693,11 +704,11 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
             continue
 
         #LOG.debug(line)
-        processed_line = {k.strip('_'): (COLUMNS[k](line[k])
-                                         #if not isinstance(COLUMNS[k], type) or not issubclass(COLUMNS[k], linefunc)
-                                         if not hasattr(COLUMNS[k], 'linefunc')
-                                         else COLUMNS[k].calc(line))
-                          for k in COLUMNS.keys()}
+        processed_line = {k.strip('_'): (columns[k](line[k])
+                                         #if not isinstance(columns[k], type) or not issubclass(columns[k], linefunc)
+                                         if not hasattr(columns[k], 'linefunc')
+                                         else columns[k].calc(line))
+                          for k in columns.keys()}
 
         c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
                   'OR REPLACE' if update else '',
@@ -731,6 +742,15 @@ def update_last_timestamp(db, update_time=None):
 def get_last_timestamp(db):
     """Return the last update timestamp from the database"""
     return db.execute('SELECT update_time FROM meta_slurm_lastupdate').fetchone()[0]
+
+
+def slurm_version(cmd=['sacct', '--version']):
+    """Return the version number of Slurm, as a tuple"""
+    # example output: b'slurm 18.08.8\n'
+    slurm_version = subprocess.check_output(cmd).decode()
+    slurm_version = slurm_version.split()[1].split('.')  # ['18', '08', '8']
+    slurm_version = tuple(int(x) for x in slurm_version)
+    return slurm_version
 
 
 if __name__ == "__main__":
