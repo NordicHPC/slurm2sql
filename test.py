@@ -1,5 +1,6 @@
 
 # pylint: disable=redefined-outer-name
+import datetime
 import getpass
 import os
 import sqlite3
@@ -116,8 +117,11 @@ def test_time(db, data1):
 #
 @pytest.mark.skipif(not has_sacct, reason="Can only be tested with sacct")
 def test_cmdline(dbfile):
-    os.system('python3 slurm2sql.py %s -- -S 2019-08-10'%dbfile)
-    os.system('python3 slurm2sql.py %s -- -S 2019-08-01 -E 2019-08-02'%dbfile)
+    ten_days_ago = (datetime.datetime.today() - datetime.timedelta(days=10)).strftime("%Y-%m-%d")
+    five_days_ago = (datetime.datetime.today() - datetime.timedelta(days=5)).strftime("%Y-%m-%d")
+    os.system('python3 slurm2sql.py %s -- -S %s'%(dbfile, ten_days_ago))
+    os.system('python3 slurm2sql.py %s -- -S %s -E %s'%(
+        dbfile, ten_days_ago, five_days_ago))
     sqlite3.connect(dbfile).execute('SELECT JobName from slurm;')
 
 @pytest.mark.skipif(not has_sacct, reason="Can only be tested with sacct")
@@ -127,7 +131,8 @@ def test_cmdline_history_days(dbfile):
 
 @pytest.mark.skipif(not has_sacct, reason="Can only be tested with sacct")
 def test_cmdline_history_start(dbfile):
-    os.system('python3 slurm2sql.py --history-start=2019-08-25 %s --'%dbfile)
+    ten_days_ago = (datetime.datetime.today() - datetime.timedelta(days=10)).strftime("%Y-%m-%d")
+    os.system('python3 slurm2sql.py --history-start=%s %s --'%(ten_days_ago, dbfile))
     sqlite3.connect(dbfile).execute('SELECT JobName from slurm;')
 
 @pytest.mark.skipif(not has_sacct, reason="Can only be tested with sacct")
