@@ -13,7 +13,10 @@ Installation
 ------------
 
 There is only a single file with no dependencies.  Python greater than
-2.7 is required.
+2.7 is required (dependencies are purposely kept minimal).
+
+The ``slurm2sql`` library + command line frontend can be installed via
+the Python Package Index: ``pip install slurm2sql``.
 
 
 
@@ -184,10 +187,11 @@ accounting database:
 Changelog
 ---------
 
-development
+0.9.1
 
 * Slurm >= 20.11 deprecates the ``AllocGRES`` and ``ReqGRES`` columns
   (using ``Alloc/ReqTRES`` instead).
+
   * From this slurm2sql version, a ReqTRES column will be requested
     and databases will need to be re-created (or manually added to the
     databases).
@@ -199,7 +203,10 @@ development
 Development and maintenance
 ---------------------------
 
-This could be considered functional alpha right or almost beta now.
+This could be considered beta right now, but it works and is in use by
+people.  There are many different variations of Slurm, if it doesn't
+work for you, send an issue or pull request to help us make it more
+general - development is only done in response to feedback.
 
 Release process::
 
