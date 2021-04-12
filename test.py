@@ -217,10 +217,16 @@ def test_history_resume_timestamp(db, data1, caplog):
     slurm2sql.main(['dummy', '--history-resume'], raw_sacct=data1, db=db)
     assert slurm2sql.slurm_timestamp(update_time) in caplog.text
 
-def test_slurm_version():
+@pytest.mark.parametrize(
+    "string,version",
+    [("slurm 20.11.1", (20, 11, 1)),
+     ("slurm 19.5.0", (19, 5, 0)),
+     ("slurm 19.05.7-Bull.1.0", (19, 5, 7)),
+    ])
+def test_slurm_version(string, version):
     """Test slurm version detection"""
-    v = slurm2sql.slurm_version(cmd=['echo', 'slurm 20.11.1'])
-    assert v == (20, 11, 1)
+    v = slurm2sql.slurm_version(cmd=['echo', string])
+    assert v == version
 
 
 # Test slurm 20.11 version
