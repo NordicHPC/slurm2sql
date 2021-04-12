@@ -746,8 +746,10 @@ def get_last_timestamp(db):
 
 def slurm_version(cmd=['sacct', '--version']):
     """Return the version number of Slurm, as a tuple"""
-    # example output: b'slurm 18.08.8\n'
+    # example output: b'slurm 18.08.8\n' or slurm 19.05.7-Bull.1.0
     slurm_version = subprocess.check_output(cmd).decode()
+    slurm_version = re.match(r"slurm\s[0-9]*\.[0-9]*\.[0-9]*", slurm_version)
+    slurm_version = (slurm_version.group(0))
     slurm_version = slurm_version.split()[1].split('.')  # ['18', '08', '8']
     slurm_version = tuple(int(x) for x in slurm_version)
     return slurm_version
