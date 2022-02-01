@@ -275,7 +275,7 @@ class slurmGPUEff(linefunc):
         if 'gpu_util' not in comment:  return
         return comment['gpu_util']/100.
 
-class slurmGPUCount(linefunc):
+class slurmGPUCountComment(linefunc):
     @staticmethod
     def calc(row):
         comment = row['Comment']
@@ -287,6 +287,16 @@ class slurmGPUCount(linefunc):
         except:
             return None
         return comment.get('ngpu')
+
+class slurmGPUCount(linefunc):
+    @staticmethod
+    def calc(row):
+        tres = row['AllocTRES'] or row['ReqTRES']
+        if not tres:  return None
+        m = re.search(r'gpu=(\d+)', tres)
+        if m:
+            return int(m.group(1))
+
 
 # Job ID related stuff
 class slurmJobIDplain(linefunc):
