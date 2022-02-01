@@ -434,7 +434,7 @@ COLUMNS = {
     'ReqGRES': str,                     # Raw GRES string
     'NTasks': nullint,
     #'AllocGRES'
-    #'AllocTRES'
+    'AllocTRES': str,
 
     # CPU related
     'NCPUS': nullint,                   # === AllocCPUS
