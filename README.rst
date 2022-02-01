@@ -144,7 +144,8 @@ them.  For other columns, check ``man sacct``.
   the other one for you.
 
 * ``ReqMemType``: ``c`` if the user requested mem-per-core originally,
-  ``n`` if mem-per-node.  Extracted from ``ReqMem``.
+  ``n`` if mem-per-node.  Extracted from ``ReqMem``.  Modern Slurm has
+  nothing here, and the column value is null.
 
 * ``ReqMemRaw``: The numeric value of the ``ReqMem``, whether it is
   ``c`` or ``n``.

@@ -201,6 +201,7 @@ class slurmMemNode(linefunc):
             return slurmmem(reqmem) * ncpus / nnodes
         if reqmem.endswith('n'):
             return slurmmem(reqmem)
+        return slurmmem(reqmem) / nnodes
 
 class slurmMemCPU(linefunc):
     """Memory per cpu, computed if necessary"""
@@ -216,6 +217,7 @@ class slurmMemCPU(linefunc):
             return slurmmem(reqmem)
         if reqmem.endswith('n'):
             return slurmmem(reqmem) * nnodes / ncpus
+        return slurmmem(reqmem) / ncpus
 
 class slurmMemType(linefunc):
     """Memory type: 'n' per node, 'c' per core"""
@@ -225,7 +227,7 @@ class slurmMemType(linefunc):
         if not reqmem: return None
         if reqmem.endswith('n'):  return 'n'
         if reqmem.endswith('c'):  return 'c'
-        raise ValueError("Unknown memory type")
+        return None # latest slurm seems to not have this, ~2021-2022
 
 class slurmMemRaw(linefunc):
     """Raw value of ReqMem column, with 'c' or 'n' suffix"""
@@ -344,11 +346,14 @@ class slurmMemEff(linefunc):
         reqmem_type = slurmMemType.calc(row)
         mem_max = slurmmem(row['MaxRSS'])
         reqmem = slurmmem(row['ReqMem'])
+        nnodes = slurmmem(row['NNodes'])
         if not reqmem or mem_max is None:  return
         if reqmem_type == 'c':
             nodemem = reqmem * int(row['NCPUS'])
         elif reqmem_type == 'n':
             nodemem = reqmem
+        elif reqmem_type is None:
+            nodemem = reqmem / nnodes
         else:
             raise ValueError('unknown memory type: %s'%reqmem_type)
         return mem_max / nodemem
