@@ -550,7 +550,8 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None):
         errors = slurm2sql(db, sacct_filter=sacct_filter,
                            update=args.update,
                            jobs_only=args.jobs_only,
-                           raw_sacct=raw_sacct)
+                           raw_sacct=raw_sacct,
+                           verbose=args.verbose)
         create_indexes(db)
 
     if errors:
@@ -637,7 +638,7 @@ def create_indexes(db):
 
 
 def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
-              raw_sacct=None):
+              raw_sacct=None, verbose=False):
     """Import one call of sacct to a sqlite database.
 
     db:
@@ -731,6 +732,8 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
         if i%10000 == 0:
             #print('committing')
             db.commit()
+            if verbose:
+                print('... processing row %d'%i)
     db.commit()
     return errors
 
@@ -760,7 +763,6 @@ def slurm_version(cmd=['sacct', '--version']):
     slurm_version = subprocess.check_output(cmd).decode()
     slurm_version = re.match(r"slurm\s([0-9]+)\.([0-9]+)\.([0-9]+)", slurm_version)
     slurm_version = tuple(int(x) for x in slurm_version.groups())
-    print(slurm_version)
     return slurm_version
 
 
