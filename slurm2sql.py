@@ -177,6 +177,15 @@ class slurmEndTS(linefunc):
     def calc(row):
         return unixtime(row['End'])
 
+class slurmBilling(linefunc):
+    @staticmethod
+    def calc(row):
+        tres = row['AllocTRES']
+        if not tres:  return None
+        m = re.search(r'billing=(\d+)', tres)
+        if m:
+            return int(m.group(1))
+
 # Memory stuff
 class slurmMemNode(linefunc):
     """Memory per node"""
@@ -393,6 +402,7 @@ COLUMNS = {
     'User': str,                        # Username
     'Group': str,                       # Group
     'Account': str,                     # Account
+    '_Billing': slurmBilling,           # Billing (from tres)
 
     # Times and runtime info
     'State': str,                       # Job state
