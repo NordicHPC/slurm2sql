@@ -111,6 +111,9 @@ them.  For other columns, check ``man sacct``.
   the machine doing the conversion.  (``slurm2sql.unixtime`` converts
   slurm-format timestamp to unixtime)
 
+* ``QueueTime`` is Start-Submit in seconds.  Start/End do not include
+  timezones, so expect inaccuracies around summer time changes.
+
 * Job IDs.  Slurm Job ID is by default of format
   ``JobID.JobStep`` or ``ArrayJobID_ArrayTaskID.JobStep``.
   Furthermore, each array job has a "Raw JobID" (different for each
