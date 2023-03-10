@@ -2,6 +2,7 @@
 # pylint: disable=redefined-outer-name
 import datetime
 import getpass
+from io import StringIO
 import os
 import sqlite3
 import sys
@@ -14,6 +15,8 @@ import slurm2sql
 from slurm2sql import unixtime
 
 has_sacct = os.system('sacct --version') == 0
+if sys.version_info[0] <= 2: # python3
+    StringIO = lambda s, StringIO=StringIO: StringIO(s.decode())
 
 
 os.environ['TZ'] = 'Europe/Helsinki'
@@ -50,8 +53,8 @@ def slurm_version_2011(monkeypatch, slurm_version_number=(20, 11, 1)):
 @pytest.fixture(scope='function')
 def data1(slurm_version):
     """Test data set 1"""
-    lines = open('tests/test-data1.txt')
-    yield lines
+    lines = open('tests/test-data1.csv').read().replace('|', ';|;')
+    yield StringIO(lines)
 
 @pytest.fixture(scope='function')
 def data2(slurm_version_2011):
@@ -59,8 +62,8 @@ def data2(slurm_version_2011):
 
     This is the same as data1, but removes the ReqGRES column (for slurm>=20.11)
     """
-    lines = open('tests/test-data2.txt')
-    yield lines
+    lines = open('tests/test-data2.csv').read().replace('|', ';|;')
+    yield StringIO(lines)
 
 
 #
