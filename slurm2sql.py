@@ -418,6 +418,7 @@ COLUMNS = {
     'User': str,                        # Username
     'Group': str,                       # Group
     'Account': str,                     # Account
+    'SubmitLine': str,                  # SubmitLine (execution command line)
     '_Billing': slurmBilling,           # Billing (from tres)
 
     # Times and runtime info
