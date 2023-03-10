@@ -46,6 +46,7 @@ def unixtime(x):
     """Timestamp in local time, converted to unixtime"""
     if not x:           return None
     if x == 'Unknown':  return None
+    if x == 'None':  return None
     return time.mktime(time.strptime(x, '%Y-%m-%dT%H:%M:%S'))
 
 def datetime_timestamp(dt):
