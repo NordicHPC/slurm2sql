@@ -178,6 +178,14 @@ class slurmEndTS(linefunc):
     def calc(row):
         return unixtime(row['End'])
 
+class slurmQueueTime(linefunc):
+    @staticmethod
+    def calc(row):
+        submit = unixtime(row['Submit'])
+        start = unixtime(row['Start'])
+        if submit is not None and start is not None:
+            return start - submit
+
 class slurmBilling(linefunc):
     @staticmethod
     def calc(row):
@@ -433,6 +441,7 @@ COLUMNS = {
     'Submit': slurmSubmitTS,            # unixtime: Submit
     'Start': slurmStartTS,              # unixtime: Start
     'End': slurmEndTS,                  # unixtime: End
+    '_QueueTime': slurmQueueTime,        # seconds, difference between submission and start
     'Partition': str,                   # Partition
     '_ExitCodeRaw': slurmExitCodeRaw,   # ExitStatus:Signal
     'ExitCode': slurmExitCode,        # ExitStatus from above, int
@@ -720,7 +729,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
             continue
         # (end)
         if len(line) > len(slurm_cols):
-            LOG.error("Line with wrong number of columns: (want=%s, have=%s) %s", len(slurm_cols), len(line), rawline)
+            LOG.error("Line with wrong number of columns: (want columns=%s, line has=%s)", len(slurm_cols), len(line))
+            LOG.error("columns = %s", header)
+            LOG.error("rawline = %s", rawline)
             errors += 1
             continue
         line = dict(zip(header, line))

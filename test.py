@@ -111,6 +111,10 @@ def test_time(db, data1):
     r = db.execute("SELECT Time FROM slurm WHERE JobIDSlurm='43977780.batch';").fetchone()[0]
     assert r == unixtime('2019-08-01T00:35:27')
 
+def test_queuetime(db, data1):
+    slurm2sql.main(['dummy'], raw_sacct=data1, db=db)
+    r = db.execute("SELECT QueueTime FROM slurm WHERE JobID=43974388;").fetchone()[0]
+    assert r == 1
 
 #
 # Test command line
