@@ -269,7 +269,8 @@ class slurmGPUMem(linefunc):
             comment = json.loads(comment)
         except:
             return None
-        if 'gpu_mem_max' not in comment:  return
+        if not isinstance(comment, dict) or 'gpu_mem_max' not in comment:
+            return
         return comment.get('gpu_mem_max') * (2**20)
 
 class slurmGPUEff(linefunc):
@@ -283,7 +284,8 @@ class slurmGPUEff(linefunc):
             comment = json.loads(comment)
         except:
             return None
-        if 'gpu_util' not in comment:  return
+        if not isinstance(comment, dict) or 'gpu_util' not in comment:
+            return
         return comment['gpu_util']/100.
 
 class slurmGPUCountComment(linefunc):
@@ -297,6 +299,8 @@ class slurmGPUCountComment(linefunc):
             comment = json.loads(comment)
         except:
             return None
+        if not isinstance(comment, dict) or 'ngpu' not in comment:
+            return
         return comment.get('ngpu')
 
 class slurmGPUCount(linefunc):
