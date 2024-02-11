@@ -34,14 +34,24 @@ else:
 
 # Single converter functions: transform one column to sqlite value
 # stored as that same column.
+def settype(type):
+    """Set type of function, for sql column definitions"""
+    def _(x):
+        x.type = type
+        return x
+    return _
+
+@settype('int')
 def nullint(x):
     """int or None"""
     return int(x) if x else None
 
+@settype('text')
 def nullstr_strip(x):
     """str or None"""
     return str(x).strip() if x else None
 
+@settype('int')
 def unixtime(x):
     """Timestamp in local time, converted to unixtime"""
     if not x:           return None
@@ -49,6 +59,7 @@ def unixtime(x):
     if x == 'None':  return None
     return time.mktime(time.strptime(x, '%Y-%m-%dT%H:%M:%S'))
 
+@settype('int')
 def datetime_timestamp(dt):
     """Convert a datetime object to unixtime
 
@@ -57,6 +68,7 @@ def datetime_timestamp(dt):
         return dt.timestamp()
     return time.mktime(dt.timetuple())
 
+@settype('real')
 def slurmtime(x):
     """Parse slurm time of format [dd-[hh:]]mm:ss"""
     if not x: return None
@@ -81,6 +93,7 @@ def slurmtime(x):
         if len(hms) >= 1:   seconds += 60   * int(hms[-2] if len(hms)>=2 else hms[-1])  # min
     return seconds
 
+@settype('text')
 def slurm_timestamp(x):
     """Convert a datetime to the Slurm format of timestamp
     """
@@ -88,10 +101,12 @@ def slurm_timestamp(x):
         x = datetime.datetime.fromtimestamp(x - 5)
     return x.strftime('%Y-%m-%dT%H:%M:%S')
 
+@settype('text')
 def str_unknown(x):
     if x == 'Unknown': return None
     return x
 
+@settype('real')
 def slurmmem(x):
     """Memory, removing 'n' or 'c' at end, in KB"""
     if not x:  return None
@@ -109,6 +124,7 @@ def unit_value_metric(unit):
     if unit is None: unit = '_'
     return 1000**('_kmgtpezy'.index(unit.lower()))
 
+@settype('real')
 def float_bytes(x, convert=float):
     """Convert a float with unit (K,M, etc) to value"""
     if not x:  return None
@@ -117,9 +133,11 @@ def float_bytes(x, convert=float):
         return convert(x[:-1]) * unit_value_binary(unit)
     return convert(x)
 
+@settype('int')
 def int_bytes(x):
     return float_bytes(x, convert=lambda x: int(float(x)))
 
+@settype('real')
 def float_metric(x, convert=float):
     """Convert a float with unit (K,M, etc) to value"""
     if not x:  return None
@@ -128,6 +146,7 @@ def float_metric(x, convert=float):
         return convert(x[:-1]) * unit_value_metric(unit)
     return convert(x)
 
+@settype('int')
 def int_metric(x):
     return float_metric(x, convert=lambda x: int(float(x)))
 
@@ -139,6 +158,7 @@ def int_metric(x):
 class linefunc(object):
     """Base class for all converter functions"""
     linefunc = True
+    type = ''
 
 # Submit, start, and end times as unixtimes
 class slurmDefaultTime(linefunc):
@@ -158,27 +178,32 @@ class slurmDefaultTime(linefunc):
         return row['Submit']
 
 class slurmDefaultTimeTS(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         """Lastest active time (see above), unixtime."""
         return unixtime(slurmDefaultTime.calc(row))
 
 class slurmSubmitTS(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         return unixtime(row['Submit'])
 
 class slurmStartTS(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         return unixtime(row['Start'])
 
 class slurmEndTS(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         return unixtime(row['End'])
 
 class slurmQueueTime(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         submit = unixtime(row['Submit'])
@@ -187,6 +212,7 @@ class slurmQueueTime(linefunc):
             return start - submit
 
 class slurmBilling(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         tres = row['AllocTRES']
@@ -198,6 +224,7 @@ class slurmBilling(linefunc):
 # Memory stuff
 class slurmMemNode(linefunc):
     """Memory per node"""
+    type = 'real'
     @staticmethod
     def calc(row):
         reqmem = row['ReqMem']
@@ -214,6 +241,7 @@ class slurmMemNode(linefunc):
 
 class slurmMemCPU(linefunc):
     """Memory per cpu, computed if necessary"""
+    type = 'real'
     @staticmethod
     def calc(row):
         reqmem = row['ReqMem']
@@ -230,6 +258,7 @@ class slurmMemCPU(linefunc):
 
 class slurmMemType(linefunc):
     """Memory type: 'n' per node, 'c' per core"""
+    type = 'real'
     @staticmethod
     def calc(row):
         reqmem = row['ReqMem']
@@ -246,6 +275,7 @@ class slurmMemRaw(linefunc):
 
 # GPU stuff
 class slurmReqGPU(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         if 'ReqGRES' in row:
@@ -259,6 +289,7 @@ class slurmReqGPU(linefunc):
             return int(m.group(1))
 
 class slurmGPUMem(linefunc):
+    type = 'real'
     @staticmethod
     def calc(row):
         comment = row['Comment']
@@ -274,6 +305,7 @@ class slurmGPUMem(linefunc):
         return comment.get('gpu_mem_max') * (2**20)
 
 class slurmGPUEff(linefunc):
+    type = 'real'
     @staticmethod
     def calc(row):
         comment = row['Comment']
@@ -289,6 +321,7 @@ class slurmGPUEff(linefunc):
         return comment['gpu_util']/100.
 
 class slurmGPUCountComment(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         comment = row['Comment']
@@ -301,9 +334,10 @@ class slurmGPUCountComment(linefunc):
             return None
         if not isinstance(comment, dict) or 'ngpu' not in comment:
             return
-        return comment.get('ngpu')
+        return int(comment.get('ngpu'))
 
 class slurmGPUCount(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         tres = row['AllocTRES'] or row['ReqTRES']
@@ -316,23 +350,27 @@ class slurmGPUCount(linefunc):
 # Job ID related stuff
 class slurmJobIDplain(linefunc):
     """The JobID without any . or _"""
+    type = 'int'
     @staticmethod
     def calc(row):
         return int(row['JobID'].split('_')[0].split('.')[0])
 
 class slurmJobIDrawplain(linefunc):
     """The JobID without any . or _"""
+    type = 'int'
     @staticmethod
     def calc(row):
         return int(row['JobIDRaw'].split('_')[0].split('.')[0])
 
 class slurmJobIDRawnostep(linefunc):
     """The JobID without any . or _"""
+    type = 'int'
     @staticmethod
     def calc(row):
         return int(row['JobIDRaw'].split('_')[0].split('.')[0])
 
 class slurmArrayTaskID(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         if '_' not in row['JobID']:  return
@@ -340,6 +378,7 @@ class slurmArrayTaskID(linefunc):
         return int(row['JobID'].split('_')[1].split('.')[0])
 
 class slurmJobStep(linefunc):
+    type = 'text'
     @staticmethod
     def calc(row):
         if '.' not in row['JobID']:  return
@@ -347,13 +386,15 @@ class slurmJobStep(linefunc):
 
 class slurmJobIDslurm(linefunc):
     """The JobID field as slurm gives it, including _ and ."""
+    type = 'text'
     @staticmethod
     def calc(row):
         return row['JobID']
 
 # Efficiency stuff
 class slurmMemEff(linefunc):
-    #https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
+    # https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
+    type = 'real'
     @staticmethod
     def calc(row):
         reqmem_type = slurmMemType.calc(row)
@@ -374,6 +415,7 @@ class slurmMemEff(linefunc):
 class slurmCPUEff(linefunc):
     # This matches the seff tool currently:
     # https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
+    type = 'real'
     @staticmethod
     def calc(row):
         walltime = slurmtime(row['Elapsed'])
@@ -382,24 +424,28 @@ class slurmCPUEff(linefunc):
         return cpueff
 
 class slurmConsumedEnergy(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         if not row['ConsumedEnergyRaw']:  return None
         return int(row['ConsumedEnergyRaw'])
 
 class slurmExitCodeRaw(linefunc):
+    type = 'text'
     @staticmethod
     def calc(row):
         if not row['ExitCode']:  return None
         return row['ExitCode']
 
 class slurmExitCode(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         if not row['ExitCode']:  return None
         return int(row['ExitCode'].split(':')[0])
 
 class slurmExitSignal(linefunc):
+    type = 'int'
     @staticmethod
     def calc(row):
         if not row['ExitCode']:  return None
@@ -692,8 +738,15 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     if slurm_version() >= (20, 11):
         del columns['ReqGRES']
 
-    create_columns = ', '.join('"'+c.strip('_')+'"' for c in columns)
-    create_columns = create_columns.replace('JobIDSlurm"', 'JobIDSlurm" UNIQUE')
+
+
+    def infer_type(cd):
+        if hasattr(cd, 'type'): return cd.type
+        elif cd == str: return 'text'
+        return ''
+    create_columns = ', '.join('"%s" %s'%(c.strip('_'), infer_type(cd))
+                               for c, cd in columns.items())
+    create_columns = create_columns.replace('JobIDSlurm" text', 'JobIDSlurm" text UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE TABLE IF NOT EXISTS meta_slurm_lastupdate (id INTEGER PRIMARY KEY, update_time REAL)')
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where JobStep is null;')
