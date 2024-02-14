@@ -4,9 +4,13 @@ Convert Slurm accounting database to sqlite3 file
 This contains one utility, ``slurm2sql``, which uses the `Slurm
 <https://slurm.schedmd.com/overview>`__ workload manager's ``sacct``,
 to export all statistics from jobs and load them to a well-formed
-sqlite3 file.  This file can then be queried for analytics much more
+SQLite3 file.  This file can then be queried for analytics much more
 easily than the raw database or your own exports.
 
+Even if SQLite isn't the main use you want, it provides an easy
+intermediate file on the way to convert to whatever format you want.
+In particular, it defines the database so that it can be used with
+DuckDB, which is a more efficient tool for analytics.
 
 
 Installation
@@ -50,12 +54,15 @@ Slurm).
 
 To resume from where you left off, first run with one of the history
 options.  Then, you can do ``--history-resume`` (no ``-u`` needed) and
-it will continue fetching day-by-day from the time you last fetched::
+it will continue fetching day-by-day from the time you last fetched.
+You can also run this every day, to first load old historykeep a database updated::
 
   slurm2sql.py --history-days=N -u sincejuly.sqlite3 -- -a
   slurm2sql.py --history-resume sincejuly.sqlite3 -- -a
 
 
+From Python
+~~~~~~~~~~~
 
 It can also be used from Python as what is essentially a glorified
 parser::
@@ -66,6 +73,44 @@ parser::
   # For example, you can then convert to a dataframe:
   import pandas as pd
   df = pd.read_sql('SELECT * FROM slurm', db)
+
+
+From DuckDB
+~~~~~~~~~~~
+
+DuckDB is a lot like SQLite, but column-oriented and optimized for
+fast processing of data.  The main downsides are slow inserts and
+columns must have consistent data types, but that's the tradeoff we
+need.  Slurm2sql's SQLite database is created with type definitions,
+so that you can easily open it with DuckDB even without conversion:
+
+.. code-block:: console
+
+   $ duckdb dump.sqlite3
+
+Or for even more speed, make a temporary in-memory copy (or this could
+also be made into a file):
+
+.. code-block:: sql
+
+   -- command line:  $ duckdb database.db
+   ATTACH ':memory:' AS tmp;
+   CREATE TABLE tmp.slurm AS (SELECT * FROM slurm);
+   USE tmp;      -- optional but makes tmp the default
+
+Converting to DuckDB:
+
+.. code-block:: console
+
+    $ duckdb new.duckdb "CREATE TABLE slurm AS (SELECT * FROM sqlite_scan('original.sqlite3', 'slurm'))"
+
+Using via DuckDB from Python (with the raw sqlite database):
+
+.. code-block:: python
+
+    conn = duckdb.connect("database.sqlite3")
+    conn.execute("select avg(cputime) from slurm").df()
+
 
 
 Database format
