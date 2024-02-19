@@ -211,13 +211,14 @@ class slurmQueueTime(linefunc):
         if submit is not None and start is not None:
             return start - submit
 
+billing_re = re.compile(r'billing=(\d+)')
 class slurmBilling(linefunc):
     type = 'int'
     @staticmethod
     def calc(row):
         tres = row['AllocTRES']
         if not tres:  return None
-        m = re.search(r'billing=(\d+)', tres)
+        m = billing_re.search(tres)
         if m:
             return int(m.group(1))
 
@@ -274,6 +275,7 @@ class slurmMemRaw(linefunc):
         return row['ReqMem']
 
 # GPU stuff
+gpu_re = re.compile(r'gpu[:=](\d+)')
 class slurmReqGPU(linefunc):
     type = 'int'
     @staticmethod
@@ -284,7 +286,7 @@ class slurmReqGPU(linefunc):
             gres = row['ReqTRES']
         if not gres:  return None
         # Slurm 20.11 uses gres= within ReqTRES (instead of ReqGRES)
-        m = re.search(r'gpu[:=](\d+)', gres)
+        m = gpu_re.search(gres)
         if m:
             return int(m.group(1))
 
@@ -336,46 +338,51 @@ class slurmGPUCountComment(linefunc):
             return
         return int(comment.get('ngpu'))
 
+
+gpu_re2 = re.compile(r'gpu=(\d+)')
 class slurmGPUCount(linefunc):
     type = 'int'
     @staticmethod
     def calc(row):
         tres = row['AllocTRES'] or row['ReqTRES']
         if not tres:  return None
-        m = re.search(r'gpu=(\d+)', tres)
+        m = gpu_re2.search(tres)
         if m:
             return int(m.group(1))
 
 
 # Job ID related stuff
+jobidplain_re = re.compile(r'[0-9]+')
 class slurmJobIDplain(linefunc):
-    """The JobID without any . or _"""
+    """The JobID without any . or _.   This is the same for all array tasks/het offsets"""
     type = 'int'
     @staticmethod
     def calc(row):
-        return int(row['JobID'].split('_')[0].split('.')[0])
+        return int(jobidplain_re.match(row['JobID']).group(0))
 
 class slurmJobIDrawplain(linefunc):
-    """The JobID without any . or _"""
+    """The (raw) JobID without any . or _.  This is different for every job."""
     type = 'int'
     @staticmethod
     def calc(row):
-        return int(row['JobIDRaw'].split('_')[0].split('.')[0])
+        return int(jobidplain_re.match(row['JobIDRaw']).group(0))
 
 class slurmJobIDRawnostep(linefunc):
-    """The JobID without any . or _"""
+    """Same as jobIDrawplain.  Purpose should be sorted out or should be removed someday"""
     type = 'int'
     @staticmethod
     def calc(row):
-        return int(row['JobIDRaw'].split('_')[0].split('.')[0])
+        return int(jobidplain_re.match(row['JobIDRaw']).group(0))
 
+arraytaskid_re = re.compile(r'_([0-9]+)')
 class slurmArrayTaskID(linefunc):
+    """Array task ID, the part after _."""
     type = 'int'
     @staticmethod
     def calc(row):
         if '_' not in row['JobID']:  return
         if '[' in row['JobID']:      return
-        return int(row['JobID'].split('_')[1].split('.')[0])
+        return int(arraytaskid_re.search(row['JobID']).group(1))
 
 class slurmJobStep(linefunc):
     type = 'text'

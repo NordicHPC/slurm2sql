@@ -250,6 +250,41 @@ def test_slurm2011_gres(db, data2):
 
 
 #
+# JobIDs
+#
+jobid_test_data = [
+    # raw text        JobIDplain    ArrayTaskID     JobStep         jobIDslurm
+    ['7099567_5035',     7099567,         5035,        None,     '7099567_5035',  ],
+    ['7102250',          7102250,         None,        None,          '7102250',  ],
+    ['1000.2',              1000,         None,         '2',           '1000.2',  ],
+    ['1000_2',              1000,            2,        None,           '1000_2',  ],
+    ['1000_2.3',            1000,            2,         '3',        '1000_2.3',   ],
+    ['1000+2',              1000,         None,        None,           '1000+2',  ],
+    ['1000+2.3',            1000,         None,         '3',        '1000+2.3',   ],
+    ['1000_2+3',            1000,            2,        None,         '1000_2+3',  ],
+    ['1000_2+3.1',          1000,            2,         '1',      '1000_2+3.1',   ],
+#    [, , , , ]
+    ]
+jobidraw_test_data = [
+    # raw text        jobIDrawplain      jobIDrawnostep
+    ['7099567',             7099567,           7099567,   ],
+    ['7102250.1',           7102250,           7102250,   ],
+    ]
+@pytest.mark.parametrize("text, jobidplain, arraytaskid, jobstep, jobidslurm", jobid_test_data)
+def test_jobids(text, jobidplain, arraytaskid, jobstep, jobidslurm):
+    assert slurm2sql.slurmJobIDplain.calc({'JobID': text}) == jobidplain
+    assert slurm2sql.slurmArrayTaskID.calc({'JobID': text}) == arraytaskid
+    assert slurm2sql.slurmJobStep.calc({'JobID': text}) == jobstep
+    assert slurm2sql.slurmJobIDslurm.calc({'JobID': text}) == jobidslurm
+
+@pytest.mark.parametrize("text, jobidrawplain, jobidrawnostep", jobidraw_test_data)
+def test_jobidraws(text, jobidrawplain, jobidrawnostep):
+    assert slurm2sql.slurmJobIDrawplain.calc({'JobIDRaw': text}) == jobidrawplain
+    assert slurm2sql.slurmJobIDRawnostep.calc({'JobIDRaw': text}) == jobidrawnostep
+
+
+
+#
 # Test data generation
 #
 def make_test_data():
