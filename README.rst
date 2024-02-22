@@ -182,6 +182,8 @@ them.  For other columns, check ``man sacct``.
   * ``JobIDSlurm``: The raw output from sacct JobID field, including
     ``.`` and ``_``.  String.
 
+  * Note: HetJob offsets are not currently handled
+
 * ``ReqMem``: The raw slurm value in a format like "5Gn".  Instead of
   parsing this, you probably want to use one of the other values below.
 
