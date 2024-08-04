@@ -35,11 +35,16 @@ else:
 # Single converter functions: transform one column to sqlite value
 # stored as that same column.
 def settype(type):
-    """Set type of function, for sql column definitions"""
+    """Decorator: Set type of function, for sql column definitions."""
     def _(x):
         x.type = type
         return x
     return _
+
+@settype('int')
+def int_(x):
+    """int"""
+    return (int(x))
 
 @settype('int')
 def nullint(x):
@@ -159,6 +164,31 @@ class linefunc(object):
     """Base class for all converter functions"""
     linefunc = True
     type = ''
+
+
+# Generic extractor-generator function.
+def ExtractField(name, columnname, fieldname, type_):
+    """Extract a field out of a column, in the TRES/GRSE column formats.
+
+    Example: 'gres/gpuutil'
+    """
+
+    _re = re.compile(rf'{fieldname}[=]([^,]*)')
+    @staticmethod
+    def calc(row):
+        if columnname not in row:  return None
+        # Slurm 20.11 uses gres= within ReqTRES (instead of ReqGRES)
+        #print(row[columnname])
+        m = _re.search(row[columnname])
+        if m:
+            return type_(m.group(1))
+
+    return type(name, (linefunc,), {'calc': calc, 'type': type_.type})
+
+
+
+# The main converter functions
+
 
 # Submit, start, and end times as unixtimes
 class slurmDefaultTime(linefunc):
@@ -353,12 +383,20 @@ class slurmGPUCount(linefunc):
 
 # Job ID related stuff
 jobidplain_re = re.compile(r'[0-9]+')
+jobidnostep_re = re.compile(r'[0-9]+(_[0-9]+)?')
 class slurmJobIDplain(linefunc):
     """The JobID without any . or _.   This is the same for all array tasks/het offsets"""
     type = 'int'
     @staticmethod
     def calc(row):
         return int(jobidplain_re.match(row['JobID']).group(0))
+
+class slurmJobIDnostep(linefunc):
+    """The JobID without any `.` suffixes.   This is the same for all het offsets"""
+    type = 'str'
+    @staticmethod
+    def calc(row):
+        return jobidnostep_re.match(row['JobID']).group(0)
 
 class slurmJobIDrawplain(linefunc):
     """The (raw) JobID without any . or _.  This is different for every job."""
@@ -472,6 +510,7 @@ COLUMNS = {
     # And the below is consistent with this.
     'JobID': slurmJobIDrawplain,        # Integer JobID (for arrays JobIDRaw),
                                         # without array/step suffixes.
+    '_JobIDnostep': slurmJobIDnostep,   # Integer JobID without '.' suffixes
     '_ArrayJobID': slurmJobIDplain,     # Same job id for all jobs in an array.
                                         # If not array, same as JobID
     '_ArrayTaskID': slurmArrayTaskID,   # Part between '_' and '.'
@@ -518,6 +557,10 @@ COLUMNS = {
     'NTasks': nullint,
     #'AllocGRES'
     'AllocTRES': str,
+    'TRESUsageInAve': str,
+    'TRESUsageInMax': str,
+    'TRESUsageInMin': str,
+    'TRESUsageInTot': str,
 
     # CPU related
     'NCPUS': nullint,                   # === AllocCPUS
@@ -556,11 +599,17 @@ COLUMNS = {
     'MaxDiskWriteTask': str,
 
     # GPU related
-    '_ReqGPUS': slurmReqGPU,            # Number of GPUS requested
+    #'_ReqGPUS': slurmReqGPU,            # Number of GPUS requested
+    '_ReqGPUS': ExtractField('ReqGpus', 'ReqTRES', 'gres/gpu', float_metric),
     'Comment': nullstr_strip,           # Slurm Comment field (at Aalto used for GPU stats)
-    '_GPUMem': slurmGPUMem,             # GPU mem extracted from comment field
-    '_GPUEff': slurmGPUEff,             # GPU utilization (0.0 to 1.0) extracted from comment field
-    '_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
+    #'_GPUMem': slurmGPUMem,             # GPU mem extracted from comment field
+    #'_GPUEff': slurmGPUEff,             # GPU utilization (0.0 to 1.0) extracted from comment field
+    #'_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
+    '_NGpus': ExtractField('NGpu', 'AllocTRES', 'gres/gpu', float_metric),
+    '_GpuUtil': ExtractField('GpuUtil', 'TRESUsageInAve', 'gres/gpuutil', float_metric),
+    '_GpuMem': ExtractField('GpuMem2', 'TRESUsageInAve', 'gres/gpumem', float_metric),
+    '_GpuUtilTot': ExtractField('GpuUtilTot', 'TRESUsageInTot', 'gres/gpuutil', float_metric),
+    '_GpuMemTot': ExtractField('GpuMemTot',   'TRESUsageInTot', 'gres/gpumem', float_metric),
     }
 # Everything above that does not begin with '_' is queried from sacct.
 # These extra columns are added (don't duplicate with the above!)
@@ -757,6 +806,29 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE TABLE IF NOT EXISTS meta_slurm_lastupdate (id INTEGER PRIMARY KEY, update_time REAL)')
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where JobStep is null;')
+    db.execute('CREATE VIEW IF NOT EXISTS eff AS select '
+               'JobIDnostep, '
+               'User, '
+               'Partition, '
+               'Account, '
+               'State, '
+               'TimeLimit, '
+               'Start, '
+               'ReqTRES, '
+               'max(Elapsed) AS Elapsed, '
+               'max(NCPUS) AS NCPUS, '
+               'max(totalcpu)/max(cputime) AS CPUeff, '  # highest TotalCPU is for the whole allocation
+               'max(cputime) AS cpu_s_reserved, '
+               'max(ReqMemNode) AS MemReq, '
+               'max(ReqMemNode*Elapsed) AS mem_s_reserved, '
+               'max(MaxRSS) / max(ReqMemNode) AS MemEff, '
+               'max(NGpus) AS NGpus, '
+               'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
+               'max(GPUutil)/100. AS GPUeff, '
+               'max(GPUMem) AS GPUMem, '
+               'MaxDiskRead, '
+               'MaxDiskWrite '
+               'FROM slurm GROUP BY JobIDnostep')
     db.execute('PRAGMA journal_mode = WAL;')
     db.commit()
     c = db.cursor()
@@ -858,5 +930,76 @@ def slurm_version(cmd=['sacct', '--version']):
     return slurm_version
 
 
+def sacct_cli(argv=sys.argv[1:]):
+    """A command line that uses slurm2sql to give an sacct-like interface."""
+    parser = argparse.ArgumentParser()
+    #parser.add_argument('db', help="Database filename to create or update")
+    parser.add_argument('sacct_filter', nargs='*',
+                        help="sacct options to filter jobs.  For example, one "
+                             "would usually give '-a' or '-S 2019-08-01' "
+                             "here, for example")
+    parser.add_argument('--output', '-o', default='*',
+                        help="Fields to output (comma separated list)")
+    parser.add_argument('--format', '-f', default='simple',
+                        help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help="Don't output anything unless errors")
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help="Output more logging info")
+    args = parser.parse_args(argv)
+
+    if args.verbose:
+        logging.lastResort.setLevel(logging.DEBUG)
+    if args.quiet:
+        logging.lastResort.setLevel(logging.WARN)
+    LOG.debug(args)
+
+
+    db = sqlite3.connect(':memory:')
+    errors = slurm2sql(db, sacct_filter=args.sacct_filter)
+
+    from tabulate import tabulate
+
+    cur = db.execute(f'select {args.output} from slurm')
+    headers = [ x[0] for x in cur.description ]
+    print(tabulate(cur, headers=headers, tablefmt=args.format))
+
+
+def seff_cli(argv=sys.argv[1:]):
+    parser = argparse.ArgumentParser()
+    #parser.add_argument('db', help="Database filename to create or update")
+    parser.add_argument('sacct_filter', nargs='*',
+                        help="sacct options to filter jobs.  For example, one "
+                             "would usually give '-a' or '-S 2019-08-01' "
+                             "here, for example")
+    parser.add_argument('--format', '-f', default='simple',
+                        help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help="Don't output anything unless errors")
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help="Output more logging info")
+    args = parser.parse_args(argv)
+
+    if args.verbose:
+        logging.lastResort.setLevel(logging.DEBUG)
+    if args.quiet:
+        logging.lastResort.setLevel(logging.WARN)
+    LOG.debug(args)
+
+
+    db = sqlite3.connect(':memory:')
+    errors = slurm2sql(db, sacct_filter=args.sacct_filter)
+
+    from tabulate import tabulate
+
+    cur = db.execute(f'select JobIDnostep, round(Elapsed/3600,2) AS hours, NCPUS,round(CPUeff, 2) AS CPUeff, round(MemReq/1073741824,2) AS MemReqGiB,round(MemEff,2) AS MemEff, NGpus, round(GPUeff,2) AS GPUeff from eff')
+    headers = [ x[0] for x in cur.description ]
+    print(tabulate(cur, headers=headers, tablefmt=args.format))
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == 'sacct':
+        exit(sacct_cli(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == 'seff':
+        exit(seff_cli(sys.argv[2:]))
     exit(main(sys.argv[1:]))

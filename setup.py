@@ -21,9 +21,14 @@ setuptools.setup(
     py_modules=["slurm2sql"],
     keywords='slurm sqlite3',
     python_requires='>= 2.7, >=3.4',
+    extras_require = {
+        'cli': ["tabulate"],
+    },
     entry_points={
         'console_scripts': [
             'slurm2sql=slurm2sql:main',
+            'slurm2sql-sacct=slurm2sql:sacct_cli',
+            'slurm2sql-seff=slurm2sql:seff_cli',
         ],
     },
     classifiers=[
