@@ -122,6 +122,10 @@ JobStep is null``).
 
 There is one row for each item returned by ``sacct``.
 
+There is another view ``eff`` that combines the data in a form that is
+useful for computing efficiency of jobs: it computes ``CpuEff``,
+``MemEff``, ``GpuUtil``, and some more things.
+
 In general, there is one column for each item returned by ``sacct``,
 but some of them are converted into a more useful form.  Some columns
 are added by re-processing other columns.  In general, just use the
@@ -138,7 +142,7 @@ Columns
 
 All column values are converted to standard units: *bytes* (not MB,
 KB, etc), *seconds*, *fraction 0.0-1.0* for things like
-percentages.
+percentages, and *unixtime*.
 
 Below are some notable columns which do not exist in sacct (for the
 rest, check out the `sacct manual page <https://slurm.schedmd.com/sacct.html#lbAF>`_).  It's good
@@ -202,17 +206,18 @@ them.  For other columns, check ``man sacct``.
 
 * ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqGRES``.
 
-* GPU information.  At Aalto we store GPU usage information in the
-  ``Comment`` field in JSON of the form ``{"gpu_util": NN.NN,
-  "gpu_max_mem": NN, "ngpu": N}``.  This extracts information from that.
+* GPU information.  These use values from the ``TRESUsageInAve``
+  fields in modern Slurm
 
-  * ``GPUMem``: Max amount of memory used from any GPU.  Note: all GPU
-    stats require a separate Aalto-developed script.
+  * ``GpuMem``: ``gres/gpumem``
 
-  * ``GPUEff``: Percent usage of the GPUs (0.0-1.0).
+  * ``GpuUtil``: ``gres/gpuutil`` (0.0-1.0).
 
-  * ``NGPU``: Number of GPUs.  Should be the same as ``ReqGPU``, but
+  * ``NGpus``: Number of GPUs.  Should be the same as ``ReqGPU``, but
     who knows.
+
+  * ``GpuUtilTot``, ``GpuMemTot``: like above but using the
+    ``TRESUsageInTot`` sacct field.
 
 * ``MemEff``: Memory efficiency (0.0-1.0).  Like in ``seff``.  We
   compute it ourselves, so it could be wrong.  Test before trusting!

@@ -561,6 +561,7 @@ COLUMNS = {
     'TRESUsageInMax': str,
     'TRESUsageInMin': str,
     'TRESUsageInTot': str,
+    'TRESUsageOutTot': str,
 
     # CPU related
     'NCPUS': nullint,                   # === AllocCPUS
@@ -592,11 +593,10 @@ COLUMNS = {
     'AveDiskRead': int_bytes,
     'AveDiskWrite': int_bytes,
     'MaxDiskRead': int_bytes,
-    'MaxDiskReadNode': str,
-    'MaxDiskReadTask': str,
     'MaxDiskWrite': int_bytes,
-    'MaxDiskWriteNode': str,
-    'MaxDiskWriteTask': str,
+    '_TotDiskRead': ExtractField('TotDiskRead', 'TRESUsageInTot', 'fs/disk', float_bytes),
+    '_TotDiskWrite': ExtractField('TotDiskWrite', 'TRESUsageOutTot', 'fs/disk', float_bytes),
+
 
     # GPU related
     #'_ReqGPUS': slurmReqGPU,            # Number of GPUS requested
@@ -748,7 +748,7 @@ def get_history(db, sacct_filter=['-a'],
 
 
 def sacct(slurm_cols, sacct_filter):
-    cmd = ['sacct', '-o', ','.join(slurm_cols), '-P', '--units=K',
+    cmd = ['sacct', '-o', ','.join(slurm_cols), '-P',# '--units=K',
            '--delimiter=;|;',
            #'--allocations',  # no job steps, only total jobs, but doesn't show used resources.
            ] + list(sacct_filter)
@@ -813,7 +813,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'Account, '
                'State, '
                'TimeLimit, '
-               'Start, '
+               'min(Start) AS Start, '
+               'max(End) AS End, '
+               'max(NNodes) AS NNodes, '
                'ReqTRES, '
                'max(Elapsed) AS Elapsed, '
                'max(NCPUS) AS NCPUS, '
@@ -827,7 +829,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(GPUutil)/100. AS GPUeff, '
                'max(GPUMem) AS GPUMem, '
                'MaxDiskRead, '
-               'MaxDiskWrite '
+               'MaxDiskWrite, '
+               'sum(TotDiskRead) as TotDiskRead, '
+               'sum(TotDiskWrite) as TotDiskWrite '
                'FROM slurm GROUP BY JobIDnostep')
     db.execute('PRAGMA journal_mode = WAL;')
     db.commit()
@@ -942,6 +946,8 @@ def sacct_cli(argv=sys.argv[1:]):
                         help="Fields to output (comma separated list)")
     parser.add_argument('--format', '-f', default='simple',
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
+    parser.add_argument('--order',
+                        help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
     parser.add_argument('--quiet', '-q', action='store_true',
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -974,6 +980,10 @@ def seff_cli(argv=sys.argv[1:]):
                              "here, for example")
     parser.add_argument('--format', '-f', default='simple',
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
+    parser.add_argument('--aggregate-user', action='store_true',
+                        help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
+    parser.add_argument('--order',
+                        help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
     parser.add_argument('--quiet', '-q', action='store_true',
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -986,18 +996,57 @@ def seff_cli(argv=sys.argv[1:]):
         logging.lastResort.setLevel(logging.WARN)
     LOG.debug(args)
 
+    if args.order:
+        order_by = f'ORDER BY {args.order}'
+    else:
+        order_by = ''
 
     db = sqlite3.connect(':memory:')
     errors = slurm2sql(db, sacct_filter=args.sacct_filter)
 
     from tabulate import tabulate
 
+    if args.aggregate_user:
+        cur = db.execute(f"""select
+                                User,
+                                round(sum(Elapsed)/86400,1) AS days,
+
+                                round(sum(Elapsed*NCPUS)/86400,1) AS cpu_day,
+                                printf("%2.0f%%", 100*sum(Elapsed*NCPUS*CPUEff)/sum(Elapsed*NCPUS)) AS CPUEff,
+
+                                round(sum(Elapsed*MemReqGiB)/86400,1) AS mem_GiB_day,
+                                printf("%2.0f%%", 100*sum(Elapsed*MemReqGiB*MemEff)/sum(Elapsed*MemReqGiB)) AS CPUEff,
+
+                                round(sum(Elapsed*NGPUs)/86400,1) AS gpu_day,
+                                printf("%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)) AS GPUEff,
+
+                                round(sum(TotDiskRead/1048576)/sum(Elapsed),2) AS read_MiBps,
+                                round(sum(TotDiskWrite/1048576)/sum(Elapsed),2) AS write_MiBps
+
+                            FROM ( select
+                                JobIDnostep, User, Elapsed,
+                                NCPUS, CPUeff AS "CPUeff",
+                                MemReq/1073741824 AS MemReqGiB, MemEff AS MemEff,
+                                NGpus, GPUeff AS GPUeff,
+                                TotDiskRead,
+                                TotDiskWrite
+                                FROM eff
+                                WHERE End IS NOT NULL
+                                )
+                            GROUP BY user {order_by}
+                            """)
+        headers = [ x[0] for x in cur.description ]
+        print(tabulate(cur, headers=headers, tablefmt=args.format, colalign=('left', 'decimal',)+('decimal', 'right')*3))
+        sys.exit()
+
     cur = db.execute(f'select '
                          'JobIDnostep, User, round(Elapsed/3600,2) AS hours, '
-                         'NCPUS, format("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff", '
-                         'round(MemReq/1073741824,2) AS MemReqGiB, format("%3.0f%%",round(MemEff,2)*100)  AS MemEff, '
-                         'NGpus, format("%3.0f%%",round(GPUeff,2)*100) AS GPUeff '
-                         'from eff')
+                         'NCPUS, printf("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff", '
+                         'round(MemReq/1073741824,2) AS MemReqGiB, printf("%3.0f%%",round(MemEff,2)*100)  AS MemEff, '
+                         'NGpus, printf("%3.0f%%",round(GPUeff,2)*100) AS GPUeff, '
+                         'round(TotDiskRead/Elapsed/1048576,2) AS read_MiBps, round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps '
+                         'FROM eff '
+                         f'WHERE End IS NOT NULL {order_by}')
     headers = [ x[0] for x in cur.description ]
     print(tabulate(cur, headers=headers, tablefmt=args.format, colalign=('decimal', 'left', 'decimal',)+('decimal', 'right')*3))
 
