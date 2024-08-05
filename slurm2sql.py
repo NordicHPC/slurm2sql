@@ -955,14 +955,16 @@ def compact_table():
 
 def sacct_cli(argv=sys.argv[1:]):
     """A command line that uses slurm2sql to give an sacct-like interface."""
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=
+        "All unknown arguments get passed to sacct to fetch data."
+        "For example, one would usually give '-a' or '-S 2019-08-01' here, for example")
     #parser.add_argument('db', help="Database filename to create or update")
-    parser.add_argument('sacct_filter', nargs='*',
-                        help="sacct options to filter jobs.  For example, one "
-                             "would usually give '-a' or '-S 2019-08-01' "
-                             "here, for example")
+    #parser.add_argument('sacct_filter', nargs='*',
+    #                    help="sacct options to filter jobs.  For example, one "
+    #                         "would usually give '-a' or '-S 2019-08-01' "
+    #                         "here, for example")
     parser.add_argument('--output', '-o', default='*',
-                        help="Fields to output (comma separated list)")
+                        help="Fields to output (comma separated list, default all fields)")
     parser.add_argument('--format', '-f', default=compact_table(),
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--order',
@@ -971,7 +973,7 @@ def sacct_cli(argv=sys.argv[1:]):
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
                         help="Output more logging info")
-    args = parser.parse_args(argv)
+    args, unknown_args = parser.parse_known_args(argv)
 
     if args.verbose:
         logging.lastResort.setLevel(logging.DEBUG)
@@ -979,9 +981,8 @@ def sacct_cli(argv=sys.argv[1:]):
         logging.lastResort.setLevel(logging.WARN)
     LOG.debug(args)
 
-
     db = sqlite3.connect(':memory:')
-    errors = slurm2sql(db, sacct_filter=args.sacct_filter)
+    errors = slurm2sql(db, sacct_filter=unknown_args)
 
     from tabulate import tabulate
 
@@ -991,23 +992,23 @@ def sacct_cli(argv=sys.argv[1:]):
 
 
 def seff_cli(argv=sys.argv[1:]):
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=
+        "All unknown arguments get passed to sacct to fetch data."
+        "For example, one would usually give '-a' or '-S 2019-08-01' here, for example")
     #parser.add_argument('db', help="Database filename to create or update")
-    parser.add_argument('sacct_filter', nargs='*',
-                        help="sacct options to filter jobs.  For example, one "
-                             "would usually give '-a' or '-S 2019-08-01' "
-                             "here, for example")
+    #parser.add_argument('sacct_filter', nargs=0,
+    #                    help="sacct options to filter jobs.  )
     parser.add_argument('--format', '-f', default=compact_table(),
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--aggregate-user', action='store_true',
-                        help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
+                        help="Aggregate data by user.")
     parser.add_argument('--order',
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
     parser.add_argument('--quiet', '-q', action='store_true',
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
                         help="Output more logging info")
-    args = parser.parse_args(argv)
+    args, unknown_args = parser.parse_known_args(argv)
 
     if args.verbose:
         logging.lastResort.setLevel(logging.DEBUG)
@@ -1021,7 +1022,7 @@ def seff_cli(argv=sys.argv[1:]):
         order_by = ''
 
     db = sqlite3.connect(':memory:')
-    errors = slurm2sql(db, sacct_filter=args.sacct_filter)
+    errors = slurm2sql(db, sacct_filter=unknown_args)
 
     from tabulate import tabulate
 
@@ -1037,7 +1038,7 @@ def seff_cli(argv=sys.argv[1:]):
                                 printf("%2.0f%%", 100*sum(Elapsed*MemReqGiB*MemEff)/sum(Elapsed*MemReqGiB)) AS CPUEff,
 
                                 round(sum(Elapsed*NGPUs)/86400,1) AS gpu_day,
-                                printf("%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)) AS GPUEff,
+                                iif(NGpus, printf("%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)), NULL) AS GPUEff,
 
                                 round(sum(TotDiskRead/1048576)/sum(Elapsed),2) AS read_MiBps,
                                 round(sum(TotDiskWrite/1048576)/sum(Elapsed),2) AS write_MiBps
@@ -1055,19 +1056,27 @@ def seff_cli(argv=sys.argv[1:]):
                             GROUP BY user {order_by}
                             """)
         headers = [ x[0] for x in cur.description ]
-        print(tabulate(cur, headers=headers, tablefmt=args.format, colalign=('left', 'decimal',)+('decimal', 'right')*3))
+        data = cur.fetchall()
+        if len(data) == 0:
+            print("No data fetched with these sacct options.")
+            exit(2)
+        print(tabulate(data, headers=headers, tablefmt=args.format, colalign=('left', 'decimal',)+('decimal', 'right')*3))
         sys.exit()
 
     cur = db.execute(f'select '
-                         'JobIDnostep, User, round(Elapsed/3600,2) AS hours, '
+                         'JobIDnostep AS JobID, User, round(Elapsed/3600,2) AS hours, '
                          'NCPUS, printf("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff", '
                          'round(MemReq/1073741824,2) AS MemReqGiB, printf("%3.0f%%",round(MemEff,2)*100)  AS MemEff, '
-                         'NGpus, printf("%3.0f%%",round(GPUeff,2)*100) AS GPUeff, '
+                         'NGpus, iif(NGpus, printf("%3.0f%%",round(GPUeff,2)*100), NULL) AS GPUeff, '
                          'round(TotDiskRead/Elapsed/1048576,2) AS read_MiBps, round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps '
                          'FROM eff '
                          f'WHERE End IS NOT NULL {order_by}')
     headers = [ x[0] for x in cur.description ]
-    print(tabulate(cur, headers=headers, tablefmt=args.format, colalign=('decimal', 'left', 'decimal',)+('decimal', 'right')*3))
+    data = cur.fetchall()
+    if len(data) == 0:
+        print("No data fetched with these sacct options.")
+        exit(2)
+    print(tabulate(data, headers=headers, tablefmt=args.format, colalign=('decimal', 'left', 'decimal',)+('decimal', 'right')*3))
 
 
 if __name__ == "__main__":
