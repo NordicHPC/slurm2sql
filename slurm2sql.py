@@ -808,7 +808,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where JobStep is null;')
     db.execute('CREATE VIEW IF NOT EXISTS eff AS select '
                'JobIDnostep, '
-               'User, '
+               'max(User) AS User, '
                'Partition, '
                'Account, '
                'State, '
@@ -992,13 +992,14 @@ def seff_cli(argv=sys.argv[1:]):
 
     from tabulate import tabulate
 
-    cur = db.execute(f'select JobIDnostep, round(Elapsed/3600,2) AS hours, '
+    cur = db.execute(f'select '
+                         'JobIDnostep, User, round(Elapsed/3600,2) AS hours, '
                          'NCPUS, format("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff", '
                          'round(MemReq/1073741824,2) AS MemReqGiB, format("%3.0f%%",round(MemEff,2)*100)  AS MemEff, '
                          'NGpus, format("%3.0f%%",round(GPUeff,2)*100) AS GPUeff '
                          'from eff')
     headers = [ x[0] for x in cur.description ]
-    print(tabulate(cur, headers=headers, tablefmt=args.format, colalign=('decimal', 'decimal',)+('decimal', 'right')*3))
+    print(tabulate(cur, headers=headers, tablefmt=args.format, colalign=('decimal', 'left', 'decimal',)+('decimal', 'right')*3))
 
 
 if __name__ == "__main__":
