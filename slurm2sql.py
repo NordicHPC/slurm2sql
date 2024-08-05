@@ -934,6 +934,25 @@ def slurm_version(cmd=['sacct', '--version']):
     return slurm_version
 
 
+
+
+def compact_table():
+    """Compact display format.  Function to not depend on tabulate in main body."""
+    import tabulate
+    from tabulate import Line, DataRow, TableFormat
+    tabulate.MIN_PADDING = 0
+    return TableFormat(
+            lineabove=Line(" ", "-", " ", " "),
+            linebelowheader=Line(" ", "-", " ", " "),
+            linebetweenrows=None,
+            linebelow=None,
+            headerrow=DataRow(" ", " ", " "),
+            datarow=DataRow(" ", " ", " "),
+            padding=0,  # Changed to 0 from 1
+            with_header_hide=["lineabove"],
+        )
+
+
 def sacct_cli(argv=sys.argv[1:]):
     """A command line that uses slurm2sql to give an sacct-like interface."""
     parser = argparse.ArgumentParser()
@@ -944,7 +963,7 @@ def sacct_cli(argv=sys.argv[1:]):
                              "here, for example")
     parser.add_argument('--output', '-o', default='*',
                         help="Fields to output (comma separated list)")
-    parser.add_argument('--format', '-f', default='simple',
+    parser.add_argument('--format', '-f', default=compact_table(),
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--order',
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
@@ -978,7 +997,7 @@ def seff_cli(argv=sys.argv[1:]):
                         help="sacct options to filter jobs.  For example, one "
                              "would usually give '-a' or '-S 2019-08-01' "
                              "here, for example")
-    parser.add_argument('--format', '-f', default='simple',
+    parser.add_argument('--format', '-f', default=compact_table(),
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--aggregate-user', action='store_true',
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
