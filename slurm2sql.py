@@ -1055,13 +1055,13 @@ def seff_cli(argv=sys.argv[1:]):
                                 round(sum(Elapsed)/86400,1) AS days,
 
                                 round(sum(Elapsed*NCPUS)/86400,1) AS cpu_day,
-                                printf(%2.0f%%", 100*sum(Elapsed*NCPUS*CPUEff)/sum(Elapsed*NCPUS)) AS CPUEff,
+                                printf("%2.0f%%", 100*sum(Elapsed*NCPUS*CPUEff)/sum(Elapsed*NCPUS)) AS CPUEff,
 
                                 round(sum(Elapsed*MemReq)/1073741824/86400,1) AS mem_GiB_day,
-                                printf(%2.0f%%", 100*sum(Elapsed*MemReq*MemEff)/sum(Elapsed*MemReq)) AS MemEff,
+                                printf("%2.0f%%", 100*sum(Elapsed*MemReq*MemEff)/sum(Elapsed*MemReq)) AS MemEff,
 
                                 round(sum(Elapsed*NGPUs)/86400,1) AS gpu_day,
-                                iif(sum(NGpus), printf(%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)), NULL) AS GPUEff,
+                                iif(sum(NGpus), printf("%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)), NULL) AS GPUEff,
 
                                 round(sum(TotDiskRead/1048576)/sum(Elapsed),2) AS read_MiBps,
                                 round(sum(TotDiskWrite/1048576)/sum(Elapsed),2) AS write_MiBps
