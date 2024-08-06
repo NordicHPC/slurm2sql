@@ -953,6 +953,8 @@ def compact_table():
         )
 
 
+SACCT_DEFAULT_FIELDS = 'JobIDSlurm,User,State,Start,End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,ReqMem,MaxRSS,MemEff,ReqGPUS,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
+COMPLETED_STATES = 'CA,CD,DL,F,NF,OOM,PR,RV,TO'
 def sacct_cli(argv=sys.argv[1:]):
     """A command line that uses slurm2sql to give an sacct-like interface."""
     parser = argparse.ArgumentParser(description=
@@ -963,12 +965,16 @@ def sacct_cli(argv=sys.argv[1:]):
     #                    help="sacct options to filter jobs.  For example, one "
     #                         "would usually give '-a' or '-S 2019-08-01' "
     #                         "here, for example")
-    parser.add_argument('--output', '-o', default='*',
-                        help="Fields to output (comma separated list, default all fields)")
+    parser.add_argument('--db',
+                        help="Read from this DB.  Don't import new data.")
+    parser.add_argument('--output', '-o', default=SACCT_DEFAULT_FIELDS,
+                        help="Fields to output (comma separated list, use '*' for all fields).  NOT safe from SQL injection")
     parser.add_argument('--format', '-f', default=compact_table(),
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--order',
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
+    parser.add_argument('--completed', '-c', action='store_true',
+                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'")
     parser.add_argument('--quiet', '-q', action='store_true',
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -981,8 +987,15 @@ def sacct_cli(argv=sys.argv[1:]):
         logging.lastResort.setLevel(logging.WARN)
     LOG.debug(args)
 
-    db = sqlite3.connect(':memory:')
-    errors = slurm2sql(db, sacct_filter=unknown_args)
+    if args.completed:
+        unknown_args[:0] = ['--endtime=now', f'--state={COMPLETED_STATES}']
+
+    LOG.debug(f'sacct args: {unknown_args}')
+    if args.db:
+        db = sqlite3.connect(args.db)
+    else:
+         db = sqlite3.connect(':memory:')
+         errors = slurm2sql(db, sacct_filter=unknown_args)
 
     from tabulate import tabulate
 
@@ -998,12 +1011,16 @@ def seff_cli(argv=sys.argv[1:]):
     #parser.add_argument('db', help="Database filename to create or update")
     #parser.add_argument('sacct_filter', nargs=0,
     #                    help="sacct options to filter jobs.  )
+    parser.add_argument('--db',
+                        help="Read from this DB.  Don't import new data.")
     parser.add_argument('--format', '-f', default=compact_table(),
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--aggregate-user', action='store_true',
                         help="Aggregate data by user.")
     parser.add_argument('--order',
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
+    parser.add_argument('--completed', '-c', action='store_true',
+                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.")
     parser.add_argument('--quiet', '-q', action='store_true',
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -1020,40 +1037,38 @@ def seff_cli(argv=sys.argv[1:]):
         order_by = f'ORDER BY {args.order}'
     else:
         order_by = ''
+    if args.completed:
+        unknown_args[:0] = ['--endtime=now', f'--state={COMPLETED_STATES}']
 
-    db = sqlite3.connect(':memory:')
-    errors = slurm2sql(db, sacct_filter=unknown_args)
+    LOG.debug(f'sacct args: {unknown_args}')
+    if args.db:
+        db = sqlite3.connect(args.db)
+    else:
+         db = sqlite3.connect(':memory:')
+         errors = slurm2sql(db, sacct_filter=unknown_args)
 
     from tabulate import tabulate
 
     if args.aggregate_user:
-        cur = db.execute(f"""select
+        cur = db.execute(f"""select * from ( select
                                 User,
                                 round(sum(Elapsed)/86400,1) AS days,
 
                                 round(sum(Elapsed*NCPUS)/86400,1) AS cpu_day,
-                                printf("%2.0f%%", 100*sum(Elapsed*NCPUS*CPUEff)/sum(Elapsed*NCPUS)) AS CPUEff,
+                                printf(%2.0f%%", 100*sum(Elapsed*NCPUS*CPUEff)/sum(Elapsed*NCPUS)) AS CPUEff,
 
-                                round(sum(Elapsed*MemReqGiB)/86400,1) AS mem_GiB_day,
-                                printf("%2.0f%%", 100*sum(Elapsed*MemReqGiB*MemEff)/sum(Elapsed*MemReqGiB)) AS CPUEff,
+                                round(sum(Elapsed*MemReq)/1073741824/86400,1) AS mem_GiB_day,
+                                printf(%2.0f%%", 100*sum(Elapsed*MemReq*MemEff)/sum(Elapsed*MemReq)) AS MemEff,
 
                                 round(sum(Elapsed*NGPUs)/86400,1) AS gpu_day,
-                                iif(NGpus, printf("%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)), NULL) AS GPUEff,
+                                iif(sum(NGpus), printf(%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)), NULL) AS GPUEff,
 
                                 round(sum(TotDiskRead/1048576)/sum(Elapsed),2) AS read_MiBps,
                                 round(sum(TotDiskWrite/1048576)/sum(Elapsed),2) AS write_MiBps
 
-                            FROM ( select
-                                JobIDnostep, User, Elapsed,
-                                NCPUS, CPUeff AS "CPUeff",
-                                MemReq/1073741824 AS MemReqGiB, MemEff AS MemEff,
-                                NGpus, GPUeff AS GPUeff,
-                                TotDiskRead,
-                                TotDiskWrite
                                 FROM eff
                                 WHERE End IS NOT NULL
-                                )
-                            GROUP BY user {order_by}
+                            GROUP BY user ) {order_by}
                             """)
         headers = [ x[0] for x in cur.description ]
         data = cur.fetchall()
@@ -1063,14 +1078,25 @@ def seff_cli(argv=sys.argv[1:]):
         print(tabulate(data, headers=headers, tablefmt=args.format, colalign=('left', 'decimal',)+('decimal', 'right')*3))
         sys.exit()
 
-    cur = db.execute(f'select '
-                         'JobIDnostep AS JobID, User, round(Elapsed/3600,2) AS hours, '
-                         'NCPUS, printf("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff", '
-                         'round(MemReq/1073741824,2) AS MemReqGiB, printf("%3.0f%%",round(MemEff,2)*100)  AS MemEff, '
-                         'NGpus, iif(NGpus, printf("%3.0f%%",round(GPUeff,2)*100), NULL) AS GPUeff, '
-                         'round(TotDiskRead/Elapsed/1048576,2) AS read_MiBps, round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps '
-                         'FROM eff '
-                         f'WHERE End IS NOT NULL {order_by}')
+    cur = db.execute(f"""select * from ( select
+                         JobIDnostep AS JobID,
+                         User,
+                         round(Elapsed/3600,2) AS hours,
+
+                         NCPUS,
+                         printf("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff",
+
+                         round(MemReq/1073741824,2) AS MemReqGiB,
+                         printf("%3.0f%%",round(MemEff,2)*100)  AS MemEff,
+
+                         NGpus,
+                         iif(NGpus, printf("%3.0f%%",round(GPUeff,2)*100), NULL) AS GPUeff,
+
+                         round(TotDiskRead/Elapsed/1048576,2) AS read_MiBps,
+                         round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps
+
+                         FROM eff
+                         WHERE End IS NOT NULL ) {order_by}""")
     headers = [ x[0] for x in cur.description ]
     data = cur.fetchall()
     if len(data) == 0:
