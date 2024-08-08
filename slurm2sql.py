@@ -823,6 +823,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(cputime) AS cpu_s_reserved, '
                'max(ReqMemNode) AS MemReq, '
                'max(ReqMemNode*Elapsed) AS mem_s_reserved, '
+               'max(MaxRSS) AS MaxRSS, '
                'max(MaxRSS) / max(ReqMemNode) AS MemEff, '
                'max(NGpus) AS NGpus, '
                'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
@@ -1087,6 +1088,7 @@ def seff_cli(argv=sys.argv[1:]):
                          printf("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff",
 
                          round(MemReq/1073741824,2) AS MemReqGiB,
+                         round(MaxRSS/1073741824,2) AS MaxRSSGiB,
                          printf("%3.0f%%",round(MemEff,2)*100)  AS MemEff,
 
                          NGpus,
@@ -1102,7 +1104,13 @@ def seff_cli(argv=sys.argv[1:]):
     if len(data) == 0:
         print("No data fetched with these sacct options.")
         exit(2)
-    print(tabulate(data, headers=headers, tablefmt=args.format, colalign=('decimal', 'left', 'decimal',)+('decimal', 'right')*3))
+    print(tabulate(data, headers=headers, tablefmt=args.format,
+                       colalign=('decimal', 'left', 'decimal',
+                                 'decimal', 'right', # cpu
+                                 'decimal', 'decimal', 'right', # mem
+                                 'decimal', 'right', # gpu
+                                 'decimal', 'decimal', # io
+                                )))
 
 
 if __name__ == "__main__":
