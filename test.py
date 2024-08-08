@@ -1,5 +1,6 @@
 
 # pylint: disable=redefined-outer-name
+import csv
 import datetime
 import getpass
 from io import StringIO
@@ -53,8 +54,9 @@ def slurm_version_2011(monkeypatch, slurm_version_number=(20, 11, 1)):
 @pytest.fixture(scope='function')
 def data1(slurm_version):
     """Test data set 1"""
-    lines = open('tests/test-data1.csv').read().replace('|', ';|;')
-    yield StringIO(lines)
+    #lines = open('tests/test-data1.csv').read().replace('|', ';|;')
+    #yield StringIO(lines)
+    yield csv.DictReader(open('tests/test-data1.csv'), delimiter='|')
 
 @pytest.fixture(scope='function')
 def data2(slurm_version_2011):
@@ -62,22 +64,49 @@ def data2(slurm_version_2011):
 
     This is the same as data1, but removes the ReqGRES column (for slurm>=20.11)
     """
-    lines = open('tests/test-data2.csv').read().replace('|', ';|;')
-    yield StringIO(lines)
+    #lines = open('tests/test-data2.csv').read().replace('|', ';|;')
+    #yield StringIO(lines)
+    yield csv.DictReader(open('tests/test-data2.csv'), delimiter='|')
 
+@pytest.fixture(scope='function')
+def data3(slurm_version_2011):
+    """A CSV dataset
+    """
+    yield 'tests/test-data3.csv'
+
+
+def csvdata(data):
+    """Convert string CSV to a reader for s2s"""
+    reader = csv.DictReader(StringIO(data.strip()))
+    return reader
+
+def fetch(db, jobid, field, table='slurm'):
+    selector = 'JobIDSlurm'
+    if table == 'eff':
+        selector = 'JobID'
+    r = db.execute(f"SELECT {field} FROM {table} WHERE {selector}=?", (jobid,))
+    return r.fetchone()[0]
 
 #
 # Tests
 #
 def test_slurm2sql_basic(db, data1):
-    slurm2sql.slurm2sql(db, sacct_filter=[], raw_sacct=data1)
+    slurm2sql.slurm2sql(db, sacct_filter=[], csv_input=data1)
     r = db.execute("SELECT JobName, Start "
                    "FROM slurm WHERE JobID=43974388;").fetchone()
     assert r[0] == 'spawner-jupyterhub'
     assert r[1] == 1564601354
 
+def test_csv(db, data3):
+    slurm2sql.slurm2sql(db, sacct_filter=[], csv_input=data3)
+    r = db.execute("SELECT JobName, Start "
+                   "FROM slurm WHERE JobID=1;").fetchone()
+    print(r)
+    assert r[0] == 'job1'
+    assert r[1] == 3600
+
 def test_main(db, data1):
-    slurm2sql.main(['dummy'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy'], csv_input=data1, db=db)
     r = db.execute("SELECT JobName, Start "
                    "FROM slurm WHERE JobID=43974388;").fetchone()
     assert r[0] == 'spawner-jupyterhub'
@@ -86,25 +115,25 @@ def test_main(db, data1):
 
 def test_jobs_only(db, data1):
     """--jobs-only gives two rows"""
-    slurm2sql.main(['dummy', '--jobs-only'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '--jobs-only'], csv_input=data1, db=db)
     assert db.execute("SELECT count(*) from slurm;").fetchone()[0] == 2
 
 def test_verbose(db, data1, caplog):
-    slurm2sql.main(['dummy', '--history-days=1', '-v'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '--history-days=1', '-v'], csv_input=data1, db=db)
     assert time.strftime("%Y-%m-%d") in caplog.text
 
 def test_quiet(db, data1, caplog, capfd):
-    slurm2sql.main(['dummy', '-q'], raw_sacct=data1, db=db)
-    slurm2sql.main(['dummy', '--history=1-5', '-q'], raw_sacct=data1, db=db)
-    slurm2sql.main(['dummy', '--history-days=1', '-q'], raw_sacct=data1, db=db)
-    slurm2sql.main(['dummy', '--history-start=2019-01-01', '-q'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '-q'], csv_input=data1, db=db)
+    slurm2sql.main(['dummy', '--history=1-5', '-q'], csv_input=data1, db=db)
+    slurm2sql.main(['dummy', '--history-days=1', '-q'], csv_input=data1, db=db)
+    slurm2sql.main(['dummy', '--history-start=2019-01-01', '-q'], csv_input=data1, db=db)
     #assert caplog.text == ""
     captured = capfd.readouterr()
     assert captured.out == ""
     assert captured.err == ""
 
 def test_time(db, data1):
-    slurm2sql.main(['dummy'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy'], csv_input=data1, db=db)
     r = db.execute("SELECT Time FROM slurm WHERE JobID=43974388;").fetchone()[0]
     assert r == unixtime('2019-08-01T02:02:39')
     # Submit defined, Start defined, End='Unknown' --> timestamp should be "now"
@@ -115,9 +144,23 @@ def test_time(db, data1):
     assert r == unixtime('2019-08-01T00:35:27')
 
 def test_queuetime(db, data1):
-    slurm2sql.main(['dummy'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy'], csv_input=data1, db=db)
     r = db.execute("SELECT QueueTime FROM slurm WHERE JobID=43974388;").fetchone()[0]
     assert r == 1
+
+#
+# Test different fields
+#
+def test_cpueff(db):
+    data = """
+    JobID,CPUTime,TotalCPU
+    1,50:00,25:00
+    """
+    slurm2sql.slurm2sql(db, [], csv_input=csvdata(data))
+    print(db.execute('select * from eff;').fetchall())
+    assert fetch(db, 1, 'CPUTime') == 3000
+    assert fetch(db, 1, 'TotalCPU') == 1500
+    assert fetch(db, 1, 'CPUeff', table='eff') == 0.5
 
 #
 # Test command line
@@ -206,22 +249,22 @@ def test_history_last_timestamp(db, slurm_version):
 def test_history_resume_basic(db, data1):
     """Test --history-resume"""
     # Run it once.  Is the update_time approximately now?
-    slurm2sql.main(['dummy', '--history-days=1'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '--history-days=1'], csv_input=data1, db=db)
     update_time = slurm2sql.get_last_timestamp(db)
     assert abs(update_time - time.time()) < 5
     # Wait 1s, is update time different?
     time.sleep(1.1)
-    slurm2sql.main(['dummy', '--history-resume'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '--history-resume'], csv_input=data1, db=db)
     assert update_time != slurm2sql.get_last_timestamp(db)
 
 def test_history_resume_timestamp(db, data1, caplog):
     """Test --history-resume's exact timestamp"""
     # Run once to get an update_time
-    slurm2sql.main(['dummy', '--history-days=1'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '--history-days=1'], csv_input=data1, db=db)
     update_time = slurm2sql.get_last_timestamp(db)
     caplog.clear()
     # Run again and make sure that we filter based on that update_time
-    slurm2sql.main(['dummy', '--history-resume'], raw_sacct=data1, db=db)
+    slurm2sql.main(['dummy', '--history-resume'], csv_input=data1, db=db)
     assert slurm2sql.slurm_timestamp(update_time) in caplog.text
 
 @pytest.mark.parametrize(
