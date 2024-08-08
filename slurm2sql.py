@@ -1006,8 +1006,9 @@ def sacct_cli(argv=sys.argv[1:]):
 
 
 def seff_cli(argv=sys.argv[1:]):
-    parser = argparse.ArgumentParser(description=
-
+    parser = argparse.ArgumentParser(usage=
+        "slurm2sql-seff [-h] [--order ORDER] [--completed --starttime TIME] SACCT_ARGS",
+        description=
         """Print out efficiency of different jobs.  Included is CPU,
         memory, GPU, and i/o stats.
 
