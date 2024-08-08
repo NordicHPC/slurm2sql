@@ -1007,8 +1007,19 @@ def sacct_cli(argv=sys.argv[1:]):
 
 def seff_cli(argv=sys.argv[1:]):
     parser = argparse.ArgumentParser(description=
-        "All unknown arguments get passed to sacct to fetch data."
-        "For example, one would usually give '-a' or '-S 2019-08-01' here, for example")
+
+        """Print out efficiency of different jobs.  Included is CPU,
+        memory, GPU, and i/o stats.
+
+        All extra arguments get passed to `sacct` to fetch data job
+        data.  For example, one would usually give '-a' or '-S
+        2019-08-01' here, for example.  To look only at completed
+        jobs, use "--completed -S now-1week" (a start time must be
+        given with --completed because of how sacct works).
+
+        If a single argument is given, and it
+        looks like a JobID, then use only on that single job with
+        --jobs=[JobID].""")
     #parser.add_argument('db', help="Database filename to create or update")
     #parser.add_argument('sacct_filter', nargs=0,
     #                    help="sacct options to filter jobs.  )
@@ -1033,6 +1044,10 @@ def seff_cli(argv=sys.argv[1:]):
     if args.quiet:
         logging.lastResort.setLevel(logging.WARN)
     LOG.debug(args)
+
+    # A single argument that looks like a jobID is used.
+    if len(unknown_args) == 1 and re.match(r'[0-9+_]+(.[0-9a-z]+)?', unknown_args[0]):
+        unknown_args = [f'--jobs={unknown_args[0]}']
 
     if args.order:
         order_by = f'ORDER BY {args.order}'
