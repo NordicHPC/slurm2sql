@@ -440,16 +440,15 @@ class slurmJobStep(linefunc):
         if '.' not in row['JobID']:  return
         return row['JobID'].split('.')[-1]  # not necessarily an integer
 
-class slurmJobIDslurm(linefunc):
-    """The JobID field as slurm gives it, including _ and ."""
-    type = 'text'
-    @staticmethod
-    def calc(row):
-        if 'JobID' not in row: return
-        return row['JobID']
-
 # Efficiency stuff
 class slurmMemEff(linefunc):
+    """Slurm memory efficiency.
+
+    In modern Slurm, this does *not* work because the allocation rows
+    have ReqMem, and the task rows have MaxRSS, but slurm2sql handled
+    things only one row at a time.  The `eff` view computes this per
+    job.
+    """
     # https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
     type = 'real'
     @staticmethod
@@ -477,7 +476,10 @@ class slurmCPUEff(linefunc):
     def calc(row):
         walltime = slurmtime(row['Elapsed'])
         if not walltime: return None
-        cpueff = slurmtime(row['TotalCPU']) / (walltime * int(row['NCPUS']))
+        try:
+            cpueff = slurmtime(row['TotalCPU']) / (walltime * int(row['NCPUS']))
+        except ZeroDivisionError:
+            return float('nan')
         return cpueff
 
 class slurmConsumedEnergy(linefunc):
@@ -599,7 +601,7 @@ COLUMNS = {
     'MaxRSSTask': nullstr,
     'MaxPages': int_metric,
     'MaxVMSize': slurmmem,
-    '_MemEff': slurmMemEff,             # Slurm memory efficiency
+    #'_MemEff': slurmMemEff,             # Slurm memory efficiency
 
     # Disk related
     'AveDiskRead': int_bytes,
@@ -882,12 +884,12 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(totalcpu)/max(cputime) AS CPUeff, '  # highest TotalCPU is for the whole allocation
                'max(cputime) AS cpu_s_reserved, '
                'max(ReqMemNode) AS MemReq, '
-               'max(ReqMemNode*Elapsed) AS mem_s_reserved, '
+               'max(ReqMemNode*Elapsed) AS mem_s_reserved, ' # highest of any job
                'max(MaxRSS) AS MaxRSS, '
                'max(MaxRSS) / max(ReqMemNode) AS MemEff, '
                'max(NGpus) AS NGpus, '
                'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
-               'max(GPUutil)/100. AS GPUeff, '
+               'max(GPUutil)/100. AS GPUeff, '               # Individual job with highest use (check this)
                'max(GPUMem) AS GPUMem, '
                'MaxDiskRead, '
                'MaxDiskWrite, '
