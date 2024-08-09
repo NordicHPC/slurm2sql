@@ -387,39 +387,40 @@ class slurmGPUCount(linefunc):
 
 
 # Job ID related stuff
-jobidplain_re = re.compile(r'[0-9]+')
+jobidonly_re = re.compile(r'[0-9]+')
 jobidnostep_re = re.compile(r'[0-9]+(_[0-9]+)?')
-class slurmJobIDplain(linefunc):
+class slurmJobIDslurm(linefunc):
+    """The JobID field as slurm gives it, including _ and ."""
+    type = 'text'
+    @staticmethod
+    def calc(row):
+        if 'JobID' not in row: return
+        return row['JobID']
+
+class slurmJobIDonly(linefunc):
     """The JobID without any . or _.   This is the same for all array tasks/het offsets"""
     type = 'int'
     @staticmethod
     def calc(row):
         if 'JobID' not in row: return
-        return int(jobidplain_re.match(row['JobID']).group(0))
+        return int(jobidonly_re.match(row['JobID']).group(0))
 
 class slurmJobIDnostep(linefunc):
     """The JobID without any `.` suffixes.   This is the same for all het offsets"""
-    type = 'str'
+    type = 'text'
     @staticmethod
     def calc(row):
         if 'JobID' not in row: return
         return jobidnostep_re.match(row['JobID']).group(0)
 
-class slurmJobIDrawplain(linefunc):
-    """The (raw) JobID without any . or _.  This is different for every job."""
+class slurmJobIDrawonly(linefunc):
+    """The (raw) JobID without any . or _.  This is different for every job in an array."""
     type = 'int'
     @staticmethod
     def calc(row):
         if 'JobIDRaw' not in row: return
-        return int(jobidplain_re.match(row['JobIDRaw']).group(0))
+        return int(jobidonly_re.match(row['JobIDRaw']).group(0))
 
-class slurmJobIDRawnostep(linefunc):
-    """Same as jobIDrawplain.  Purpose should be sorted out or should be removed someday"""
-    type = 'int'
-    @staticmethod
-    def calc(row):
-        if 'JobIDRaw' not in row: return
-        return int(jobidplain_re.match(row['JobIDRaw']).group(0))
 
 arraytaskid_re = re.compile(r'_([0-9]+)')
 class slurmArrayTaskID(linefunc):
@@ -522,15 +523,16 @@ COLUMNS = {
     #   - JobID.JobStep
     #   - ArrayJobID_ArrayTaskID.JobStep
     # And the below is consistent with this.
-    'JobID': slurmJobIDrawplain,        # Integer JobID (for arrays JobIDRaw),
-                                        # without array/step suffixes.
-    '_JobIDnostep': slurmJobIDnostep,   # Integer JobID without '.' suffixes
-    '_ArrayJobID': slurmJobIDplain,     # Same job id for all jobs in an array.
-                                        # If not array, same as JobID
-    '_ArrayTaskID': slurmArrayTaskID,   # Part between '_' and '.'
-    '_JobStep': slurmJobStep,           # Part after '.'
-    '_JobIDSlurm': slurmJobIDslurm,     # JobID directly as Slurm presents it
+    '_JobID': slurmJobIDslurm,          # JobID directly as Slurm presents it
                                         # (with '_' and '.')
+    '_JobIDnostep': slurmJobIDnostep,   # Integer JobID without '.' suffixes
+    '_JobIDonly': slurmJobIDonly,       # Integer JobID without '_' or '.' suffixes
+    '_JobStep': slurmJobStep,           # Part after '.'
+    '_ArrayTaskID': slurmArrayTaskID,   # Part between '_' and '.'
+    '_JobIDRawonly': slurmJobIDrawonly,
+                                        # if array jobs, unique ID for each array task,
+                                        # otherwise JobID
+
     #'JobIDRawSlurm': str,              #
     'JobName': nullstr,                 # Free-form text name of the job
     'User': nullstr,                    # Username

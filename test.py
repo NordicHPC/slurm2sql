@@ -81,7 +81,7 @@ def csvdata(data):
     return reader
 
 def fetch(db, jobid, field, table='slurm'):
-    selector = 'JobIDSlurm'
+    selector = 'JobID'
     if table == 'eff':
         selector = 'JobID'
     r = db.execute(f"SELECT {field} FROM {table} WHERE {selector}=?", (jobid,))
@@ -140,7 +140,7 @@ def test_time(db, data1):
     r = db.execute("SELECT Time FROM slurm WHERE JobID=43977780;").fetchone()[0]
     assert r >= time.time() - 5
     # Job step: Submit defined, Start='Unknown', End='Unknown' --> Time should equal Submit
-    r = db.execute("SELECT Time FROM slurm WHERE JobIDSlurm='43977780.batch';").fetchone()[0]
+    r = db.execute("SELECT Time FROM slurm WHERE JobID='43977780.batch';").fetchone()[0]
     assert r == unixtime('2019-08-01T00:35:27')
 
 def test_queuetime(db, data1):
@@ -296,7 +296,7 @@ def test_slurm2011_gres(db, data2):
 # JobIDs
 #
 jobid_test_data = [
-    # raw text        JobIDplain    ArrayTaskID     JobStep         jobIDslurm
+    # raw text         JobIDonly   ArrayTaskID      JobStep              JobID
     ['7099567_5035',     7099567,         5035,        None,     '7099567_5035',  ],
     ['7102250',          7102250,         None,        None,          '7102250',  ],
     ['1000.2',              1000,         None,         '2',           '1000.2',  ],
@@ -309,21 +309,20 @@ jobid_test_data = [
 #    [, , , , ]
     ]
 jobidraw_test_data = [
-    # raw text        jobIDrawplain      jobIDrawnostep
-    ['7099567',             7099567,           7099567,   ],
-    ['7102250.1',           7102250,           7102250,   ],
+    # raw text        jobIDrawplain
+    ['7099567',             7099567, ],
+    ['7102250.1',           7102250, ],
     ]
-@pytest.mark.parametrize("text, jobidplain, arraytaskid, jobstep, jobidslurm", jobid_test_data)
-def test_jobids(text, jobidplain, arraytaskid, jobstep, jobidslurm):
-    assert slurm2sql.slurmJobIDplain.calc({'JobID': text}) == jobidplain
+@pytest.mark.parametrize("text, jobidonly, arraytaskid, jobstep, jobidslurm", jobid_test_data)
+def test_jobids(text, jobidonly, arraytaskid, jobstep, jobidslurm):
+    assert slurm2sql.slurmJobIDonly.calc({'JobID': text}) == jobidonly
     assert slurm2sql.slurmArrayTaskID.calc({'JobID': text}) == arraytaskid
     assert slurm2sql.slurmJobStep.calc({'JobID': text}) == jobstep
     assert slurm2sql.slurmJobIDslurm.calc({'JobID': text}) == jobidslurm
 
-@pytest.mark.parametrize("text, jobidrawplain, jobidrawnostep", jobidraw_test_data)
-def test_jobidraws(text, jobidrawplain, jobidrawnostep):
-    assert slurm2sql.slurmJobIDrawplain.calc({'JobIDRaw': text}) == jobidrawplain
-    assert slurm2sql.slurmJobIDRawnostep.calc({'JobIDRaw': text}) == jobidrawnostep
+@pytest.mark.parametrize("text, jobidrawonly", jobidraw_test_data)
+def test_jobidraws(text, jobidrawonly):
+    assert slurm2sql.slurmJobIDrawonly.calc({'JobIDRaw': text}) == jobidrawonly
 
 
 

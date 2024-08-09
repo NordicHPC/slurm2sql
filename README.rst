@@ -243,6 +243,12 @@ accounting database:
 Changelog
 ---------
 
+Next
+
+* JobID columns adjusted: ``JobID`` is the raw thing that slurm gives,
+  ``*only`` integer IDs without any trailing things,
+  ``JobIDrawonly`` is the RawJobID without any trailing things.
+
 0.9.1
 
 * Slurm >= 20.11 deprecates the ``AllocGRES`` and ``ReqGRES`` columns
