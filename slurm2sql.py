@@ -561,15 +561,9 @@ COLUMNS = {
 
     # Miscelaneous requested resources
     'ReqTRES': nullstr,
-    'ReqGRES': nullstr,                 # Raw GRES string
     'NTasks': nullint,
     #'AllocGRES'
     'AllocTRES': nullstr,
-    'TRESUsageInAve': nullstr,
-    'TRESUsageInMax': nullstr,
-    'TRESUsageInMin': nullstr,
-    'TRESUsageInTot': nullstr,
-    'TRESUsageOutTot': nullstr,
 
     # CPU related
     'NCPUS': nullint,                   # === AllocCPUS
@@ -623,6 +617,9 @@ COLUMNS = {
 COLUMNS_EXTRA = ['JobID',
                  'JobIDRaw',
                  'ConsumedEnergyRaw',
+                 'TRESUsageInAve',
+                 'TRESUsageInTot',
+                 'TRESUsageOutTot',
                      ]
 
 
@@ -847,12 +844,6 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     Returns: the number of errors
     """
     columns = COLUMNS.copy()
-
-    # Slurm > 20.11 deprecates ReqGRES, everything is put only into
-    # ReqTRES.  So don't fitch ReqGRES to avoid a warning.
-    if slurm_version() >= (20, 11):
-        del columns['ReqGRES']
-
 
 
     def infer_type(cd):
