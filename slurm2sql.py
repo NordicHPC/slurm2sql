@@ -1063,6 +1063,8 @@ def seff_cli(argv=sys.argv[1:]):
         jobs, use "--completed -S now-1week" (a start time must be
         given with --completed because of how sacct works).
 
+        MemReqGiB is amount requested per node (to compare with MaxRSSGiB).
+
         If a single argument is given, and it
         looks like a JobID, then use only on that single job with
         --jobs=[JobID].""")
