@@ -259,7 +259,7 @@ class slurmBilling(linefunc):
 
 # Memory stuff
 class slurmMemNode(linefunc):
-    """Memory per node"""
+    """Memory per node.  ReqMem is total across all nodes"""
     type = 'real'
     @staticmethod
     def calc(row):
@@ -269,10 +269,6 @@ class slurmMemNode(linefunc):
         if ncpus == 0:  return 0
         nnodes = int(row['NNodes'])
         if nnodes == 0: return None
-        if reqmem.endswith('c'):
-            return slurmmem(reqmem) * ncpus / nnodes
-        if reqmem.endswith('n'):
-            return slurmmem(reqmem)
         return slurmmem(reqmem) / nnodes
 
 class slurmMemCPU(linefunc):
@@ -283,13 +279,9 @@ class slurmMemCPU(linefunc):
         reqmem = row['ReqMem']
         if not reqmem:  return None
         nnodes = int(row['NNodes'])
-        if nnodes == 0: return 0
+        if nnodes == 0: return None
         ncpus = int(row['NCPUS'])
         if ncpus == 0:  return None
-        if reqmem.endswith('c'):
-            return slurmmem(reqmem)
-        if reqmem.endswith('n'):
-            return slurmmem(reqmem) * nnodes / ncpus
         return slurmmem(reqmem) / ncpus
 
 class slurmMemType(linefunc):
@@ -593,17 +585,16 @@ COLUMNS = {
     'MinCPUTask': nullstr,
 
     # Memory related
-    'ReqMem': nullstr,                  # Requested mem, value from slurm.  Has a 'c' on 'n' suffix
-    '_ReqMemType': slurmMemType,        # 'c' for mem-per-cpu or 'n' for mem-per-node
-    '_ReqMemNode': slurmMemNode,        # Mem per node, computed if type 'c'
-    '_ReqMemCPU': slurmMemCPU,          # Mem per cpu, computed if type 'n'
+    'ReqMem': float_bytes,              # Requested mem, value from slurm.  Sum across all nodes
+    '_ReqMemNode': slurmMemNode,        # Mem per node, computed
+    '_ReqMemCPU': slurmMemCPU,          # Mem per cpu, computed
     'AveRSS': slurmmem,
     'MaxRSS': slurmmem,
     'MaxRSSNode': nullstr,
     'MaxRSSTask': nullstr,
     'MaxPages': int_metric,
     'MaxVMSize': slurmmem,
-    #'_MemEff': slurmMemEff,             # Slurm memory efficiency
+    #'_MemEff': slurmMemEff,             # Slurm memory efficiency - see above for why this doesn't work
 
     # Disk related
     'AveDiskRead': int_bytes,
