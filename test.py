@@ -162,6 +162,16 @@ def test_cpueff(db):
     assert fetch(db, 1, 'TotalCPU') == 1500
     assert fetch(db, 1, 'CPUeff', table='eff') == 0.5
 
+def test_gpueff(db):
+    data = """
+    JobID,TRESUsageInAve
+    1,gres/gpuutil=23
+    """
+    slurm2sql.slurm2sql(db, [], csv_input=csvdata(data))
+    print(db.execute('select * from eff;').fetchall())
+    assert fetch(db, 1, 'GPUEff', table='eff') == 0.23
+
+
 #
 # Test command line
 #
@@ -190,6 +200,56 @@ def test_cmdline_history(dbfile):
     print('x')
     os.system('python3 slurm2sql.py --history=2-10 %s --'%dbfile)
     sqlite3.connect(dbfile).execute('SELECT JobName from slurm;')
+
+#
+# slurm2sql-sacct
+#
+def test_sacct(db, capsys):
+    data = """
+    JobID,CPUTime,TotalCPU
+    111,50:00,25:00
+    """
+    slurm2sql.sacct_cli(argv=[], csv_input=csvdata(data))
+    captured = capsys.readouterr()
+    assert '111' in captured.out
+    assert str(50*60) in captured.out  # cputime
+
+#
+# slurm2sql-seff
+#
+def test_seff(db, capsys):
+    data = """
+    JobID,End,CPUTime,TotalCPU
+    111,1970-01-01T00:00:00,50:00,25:00
+    111.2,,,25:00
+    """
+    slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
+    captured = capsys.readouterr()
+    assert '111' in captured.out
+    assert '50%' in captured.out
+
+def test_seff_mem(db, capsys):
+    data = """
+    JobID,End,ReqMem,MaxRSS
+    111,1970-01-01T00:00:00,10G,
+    111.2,,,8G
+    """
+    slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
+    captured = capsys.readouterr()
+    assert '111' in captured.out
+    assert '80%' in captured.out
+
+def test_seff_gpu(db, capsys):
+    data = """
+    JobID,End,Elapsed,TotalCPU,NCPUS,AllocTRES,TRESUsageInAve
+    111,1970-01-01T00:00:00,,1,1,,
+    111.2,1970-01-01T00:00:00,100,1,1,gres/gpu=1,gres/gpuutil=23
+    """
+    slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
+    captured = capsys.readouterr()
+    print(captured)
+    assert '111' in captured.out
+    assert '23%' in captured.out
 
 
 #
