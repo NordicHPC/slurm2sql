@@ -1,35 +1,57 @@
-Convert Slurm accounting database to sqlite3 file
-=================================================
+Read a Slurm accounting database to a sqlite3 file
+==================================================
 
-This contains one utility, ``slurm2sql``, which uses the `Slurm
+This contains a utility, ``slurm2sql``, which uses the `Slurm
 <https://slurm.schedmd.com/overview>`__ workload manager's ``sacct``,
-to export all statistics from jobs and load them to a well-formed
-SQLite3 file.  This file can then be queried for analytics much more
-easily than the raw database or your own exports.
+to export statistics from jobs and load them to a well-formed SQLite3
+file (the database is also made so that it can be quried with DuckDB).
+This file can then be queried for analytics much more easily than the
+raw database or your own exports.  The main features are:
 
-Even if SQLite isn't the main use you want, it provides an easy
-intermediate file on the way to convert to whatever format you want.
-In particular, it defines the database so that it can be used with
+- Parse ``sacct`` output (this was made before it had JSON output,
+  which you might want to look at instead - it's hard to use though).
+- Preprocess all the values in to basic units, including values like
+  GPU usage that currently have to be extracted from other fields.
+
+Even if SQLite isn't what you need, it provides an easy intermediate
+file on the way to convert to whatever format you want.  In
+particular, it defines the database so that it can be used with
 DuckDB, which is a more efficient tool for analytics.
+
+There are also some command line frontends, ``slurm2sql-sacct`` and
+``slurm2sql-seff`` that use this parsing to print out data in better
+forms than built-in Slurm commands.  This is especially useful for
+``sacct``.  You can design your own tools like this.
 
 
 Installation
 ------------
 
-There is only a single file with no dependencies.  Python greater than
-2.7 is required (dependencies are purposely kept minimal).
+Normal ``pip`` installation, name ``slurm2sql`` or ``slurm2sql[cli]``
+for the command line programs.  This installs the library and command
+line programs.
 
-The ``slurm2sql`` library + command line frontend can be installed via
-the Python Package Index: ``pip install slurm2sql``.
+::
+
+   pip install slurm2sql[cli]
+
+There is only a single file with no depencecies for the core
+``slurm2sql`` library (which could also be manually downloaded - HPC,
+right?), though the command line programs require ``tabulate``.  It's
+made to support very old Python.
 
 
 
 Usage
 -----
 
+
+``slurm2sql``
+~~~~~~~~~~~~~
+
 Sample usage::
 
-  slurm2sql.py [output_db] -- [sacct selection options]
+  slurm2sql.py OUTPUT_DB -- [SACCT_FILTER_OPTIONS]
 
 
 For example, to get all data from July and August (``-S``) for all
@@ -61,11 +83,44 @@ You can also run this every day, to first load old historykeep a database update
   slurm2sql.py --history-resume sincejuly.sqlite3 -- -a
 
 
+``slurm2sql-sacct``
+~~~~~~~~~~~~~~~~~~~
+
+This probably isn't the most useful part.  Look at command line options.
+
+.. code-block:: console
+
+   $ slurm2sql-sacct SACCT_FILTER
+
+
+``slurm2sql-seff``
+~~~~~~~~~~~~~~~~~~
+
+This is more useful: it prints ``seff`` like output in a tabular
+format.  MemReqGiB is per-node, to compare withMaxRSSGiB.
+
+.. code-block:: console
+
+   $ slurm2sql-sacct SACCT_FILTER
+
+.. code-block:: console
+
+   $ slurm2sql-seff -S now-3day
+     JobID User    hours NCPUS CPUeff MemReqGiB MaxRSSGiB MemEff NGpus GPUeff read_MiBps write_MiBps
+   ------- ------- ----- ----- ------ --------- --------- ------ ----- ------ ---------- -----------
+   1860854 darstr1  0.28     1    87%     50         9.76    20%                  213.88       14.51
+   1877467 darstr1  0        0     0%      0                  0%
+   1884493 darstr1  0        1     0%      0.49      0        0%
+   1884494 darstr1  0        1     0%      0.49      0        0%
+
+
 From Python
 ~~~~~~~~~~~
 
 It can also be used from Python as what is essentially a glorified
-parser::
+parser.
+
+.. code-block:: python
 
   db = sqlite3.connect(':memory:')
   slurm2sql.slurm2sql(db, ['-S', '2019-08-26'])
@@ -116,26 +171,25 @@ Using via DuckDB from Python (with the raw sqlite database):
 Database format
 ---------------
 
-There is one table with name ``slurm``.  There is one view
-``allocations`` which has only the jobs (not job steps) (``where
-JobStep is null``).
+Tables and views:
 
-There is one row for each item returned by ``sacct``.
-
-There is another view ``eff`` that combines the data in a form that is
-useful for computing efficiency of jobs: it computes ``CpuEff``,
-``MemEff``, ``GpuUtil``, and some more things.
+* Table ``slurm``: the main table with all of the data.  There is one
+  row for each item returned by ``sacct``.
+* View ``allocations``: has only the jobs (not job steps) (``where
+  JobStep is null``).
+* View ``eff``: Does a lot of processing of ``slurm`` to produce some
+  ``CPUEff``, ``MemEff``, and ``GPUeff`` values (0.0-1.0 usage
+  fractions), in addition to a bit more.
 
 In general, there is one column for each item returned by ``sacct``,
 but some of them are converted into a more useful form.  Some columns
-are added by re-processing other columns.  In general, just use the
-source.  See ``COLUMNS`` in ``slurm2sql.py`` for details.  Extra
-columns can easily be added.
+are added by re-processing other columns.  See ``COLUMNS`` in
+``slurm2sql.py`` for details.  Extra columns can easily be added.
 
-There are two types of converter functions: easy ones, which map one
-slurm column directly to a database column via a function, and line
-functions, which take the whole row and can do arbitrary remixing of
-the data.
+Developer note: There are two types of converter functions to make the
+columns: easy ones, which map one slurm column directly to a database
+column via a function, and line functions, which take the whole row
+and can do arbitrary remixing of the data (to compute things like CpuEff.
 
 Columns
 ~~~~~~~
@@ -143,6 +197,9 @@ Columns
 All column values are converted to standard units: *bytes* (not MB,
 KB, etc), *seconds*, *fraction 0.0-1.0* for things like
 percentages, and *unixtime*.
+
+Columns which are the same in raw ``sacct`` output aren't documented
+specifically here (but note the default units above).
 
 Below are some notable columns which do not exist in sacct (for the
 rest, check out the `sacct manual page <https://slurm.schedmd.com/sacct.html#lbAF>`_).  It's good
@@ -170,23 +227,30 @@ them.  For other columns, check ``man sacct``.
   is the same for all jobs in an array.  We split all of these
   different IDs into the following fields:
 
-  * ``JobID``: Only the integer Job ID, without the trailing array
+  * ``JobID``: The full raw value that Slurm gives.  The same for each
+    job in an array.
+
+    Only the integer Job ID, without the trailing array
     tasks or job IDs.  For array jobs, this is the "Raw JobID" as
     described above, use ``ArrayJobID`` to filter jobs that are the
     same.  Integer
 
-  * ``ArrayJobID``: The common array ID for all jobs in an array -
-    only.  For non-array jobs, same as JobID.  Integer or null.
+  * ``JobIDnostep``: The part of JobID without anything after the ``.``
+    (no steps)
+
+  * ``JobIDonly``: The integer part of the JobID.
+
+  * ``JobIDRawonly``: The integer part of the Raw JobID (so this is
+    different for each job in an aray).
 
   * ``ArrayTaskID``: As used above.  Integer on null.
 
   * ``JobStep``: Job step - only.  If you SQL filter for ``StepID is
     null`` you get only the main allocations.  String.
 
-  * ``JobIDSlurm``: The raw output from sacct JobID field, including
-    ``.`` and ``_``.  String.
-
-  * Note: HetJob offsets are not currently handled
+  * Note: HetJob offsets are not currently handled and silently
+    stripped out and give invalid data.  File an issue and this will
+    be added.
 
 * ``ReqMem``: The raw slurm value in a format like "5Gn".  Instead of
   parsing this, you probably want to use one of the other values below.
@@ -204,14 +268,14 @@ them.  For other columns, check ``man sacct``.
 * ``ReqMemRaw``: The numeric value of the ``ReqMem``, whether it is
   ``c`` or ``n``.
 
-* ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqGRES``.
+* ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqTRES``.
 
 * GPU information.  These use values from the ``TRESUsageInAve``
   fields in modern Slurm
 
   * ``GpuMem``: ``gres/gpumem``
 
-  * ``GpuUtil``: ``gres/gpuutil`` (0.0-1.0).
+  * ``GpuUtil``: ``gres/gpuutil`` (fraction 0.0-1.0).
 
   * ``NGpus``: Number of GPUs.  Should be the same as ``ReqGPU``, but
     who knows.
@@ -219,17 +283,15 @@ them.  For other columns, check ``man sacct``.
   * ``GpuUtilTot``, ``GpuMemTot``: like above but using the
     ``TRESUsageInTot`` sacct field.
 
-* ``MemEff``: Memory efficiency (0.0-1.0).  Like in ``seff``.  We
-  compute it ourselves, so it could be wrong.  Test before trusting!
-  There can still be corner cases, job steps may be off, etc.  This
-  also relies on memory reporting being correct, which may not be the
-  case...
+* ``MemEff``: This is null in the Slurm table now, since Slurm gives
+  ReqMem in allocations and memory used in steps.  The ``eff`` table
+  calculates this now.
 
 * ``CPUEff``: CPU efficiency (0.0-1.0).  All the same caveats as above
   apply: test before trusting.
 
 Quick reference of the other most important columns from the
-accounting database:
+accounting database that are hardest to remember:
 
 * ``Elapsed``: Wall clock time
 
@@ -238,6 +300,15 @@ accounting database:
 
 * ``TotalCPU``: SystemCPU + TotalCPU, seconds of productive work.
 
+The ``eff`` table adds the following:
+
+* ``CPUEff``: like CPUEff but for the whole job
+
+* ``MemEff``: Memory efficiency for the whole job (max(MaxRSS) /
+  ReqMem)
+
+* And more, see the code for now.
+
 
 
 Changelog
@@ -245,9 +316,16 @@ Changelog
 
 Next
 
+* This is the biggest column clean-up in a while.
+* Add slurm2sql-{seff,sacct} commands.
 * JobID columns adjusted: ``JobID`` is the raw thing that slurm gives,
   ``*only`` integer IDs without any trailing things,
   ``JobIDrawonly`` is the RawJobID without any trailing things.
+* ReqMem has been updated: it no longer parses ``n`` and ``c``
+  suffixes for mem-per-node/cpu, and that respective column has been
+  removed.
+* MemEff has been removed from the ``slurm`` table, since it is always
+  empty.  The ``eff`` view has been added instead.
 
 0.9.1
 
@@ -266,14 +344,33 @@ Development and maintenance
 ---------------------------
 
 This could be considered beta right now, but it works and is in use by
-people.  There are many different variations of Slurm, if it doesn't
+people.  If this is important for you, comment about your use case
+in the Github issue tracker.  Watch the repo if you want to give
+comments on future data schema updates and backwards compatibility
+when Slurm changes.
+
+There are many different variations of Slurm, if it doesn't
 work for you, send an issue or pull request to help us make it more
 general - development is only done in response to feedback.
+
+Development principles:
+
+- All values are the most basic (metric) units: bytes, seconds,
+  seconds-since-epoch, etc.
+- Try to use existing Slurm column names as much as possible (even if
+  they are hard to remember).
+- Try to support as many Slurm versions as possible, but if something
+  becomes hard to support, don't worry too much about breaking
+  compatibly. SchedMD support slurm for 18 months after release. Try
+  to support at least those versions.  (Until someone asks for it,
+  don't assume we can import data from very old Slurm versions)
+- Don't try to maintain database compatibility. It's expected that for
+  all schema changes, you have to delete and re-import. But try to
+  avoid this if not needed.
 
 Release process::
 
   python setup.py sdist bdist_wheel
   twine upload [--repository-url https://test.pypi.org/legacy/] dist/*0.9.0*
-
 
 Originally developed at Aalto University, Finland.
