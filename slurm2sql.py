@@ -381,7 +381,7 @@ class slurmGPUCount(linefunc):
 # Job ID related stuff
 jobidonly_re = re.compile(r'[0-9]+')
 jobidnostep_re = re.compile(r'[0-9]+(_[0-9]+)?')
-class slurmJobIDslurm(linefunc):
+class slurmJobID(linefunc):
     """The JobID field as slurm gives it, including _ and ."""
     type = 'text'
     @staticmethod
@@ -515,7 +515,7 @@ COLUMNS = {
     #   - JobID.JobStep
     #   - ArrayJobID_ArrayTaskID.JobStep
     # And the below is consistent with this.
-    '_JobID': slurmJobIDslurm,          # JobID directly as Slurm presents it
+    '_JobID': slurmJobID,               # JobID directly as Slurm presents it
                                         # (with '_' and '.')
     '_JobIDnostep': slurmJobIDnostep,   # Integer JobID without '.' suffixes
     '_JobIDonly': slurmJobIDonly,       # Integer JobID without '_' or '.' suffixes
@@ -620,7 +620,10 @@ COLUMNS = {
     }
 # Everything above that does not begin with '_' is queried from sacct.
 # These extra columns are added (don't duplicate with the above!)
-COLUMNS_EXTRA = ['ConsumedEnergyRaw', 'JobIDRaw']
+COLUMNS_EXTRA = ['JobID',
+                 'JobIDRaw',
+                 'ConsumedEnergyRaw',
+                     ]
 
 
 
@@ -776,6 +779,7 @@ def sacct(slurm_cols, sacct_filter):
 
 
 def create_indexes(db):
+    db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_jobidnostep ON slurm (JobIDnostep)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_start ON slurm (Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_time ON slurm (Time)')
@@ -857,7 +861,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
         return ''
     create_columns = ', '.join('"%s" %s'%(c.strip('_'), infer_type(cd))
                                for c, cd in columns.items())
-    create_columns = create_columns.replace('JobIDSlurm" text', 'JobIDSlurm" text UNIQUE')
+    create_columns = create_columns.replace('JobID" text', 'JobID" text UNIQUE')
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE TABLE IF NOT EXISTS meta_slurm_lastupdate (id INTEGER PRIMARY KEY, update_time REAL)')
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where JobStep is null;')
@@ -990,7 +994,7 @@ def compact_table():
         )
 
 
-SACCT_DEFAULT_FIELDS = 'JobIDSlurm,User,State,Start,End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,ReqMem,MaxRSS,MemEff,ReqGPUS,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
+SACCT_DEFAULT_FIELDS = 'JobID,User,State,Start,End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,ReqMem,MaxRSS,ReqGPUS,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
 COMPLETED_STATES = 'CA,CD,DL,F,NF,OOM,PR,RV,TO'
 def sacct_cli(argv=sys.argv[1:]):
     """A command line that uses slurm2sql to give an sacct-like interface."""

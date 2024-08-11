@@ -313,12 +313,12 @@ jobidraw_test_data = [
     ['7099567',             7099567, ],
     ['7102250.1',           7102250, ],
     ]
-@pytest.mark.parametrize("text, jobidonly, arraytaskid, jobstep, jobidslurm", jobid_test_data)
-def test_jobids(text, jobidonly, arraytaskid, jobstep, jobidslurm):
+@pytest.mark.parametrize("text, jobidonly, arraytaskid, jobstep, jobid", jobid_test_data)
+def test_jobids(text, jobidonly, arraytaskid, jobstep, jobid):
     assert slurm2sql.slurmJobIDonly.calc({'JobID': text}) == jobidonly
     assert slurm2sql.slurmArrayTaskID.calc({'JobID': text}) == arraytaskid
     assert slurm2sql.slurmJobStep.calc({'JobID': text}) == jobstep
-    assert slurm2sql.slurmJobIDslurm.calc({'JobID': text}) == jobidslurm
+    assert slurm2sql.slurmJobID.calc({'JobID': text}) == jobid
 
 @pytest.mark.parametrize("text, jobidrawonly", jobidraw_test_data)
 def test_jobidraws(text, jobidrawonly):
