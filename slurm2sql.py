@@ -1075,6 +1075,8 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
 
         MemReqGiB is amount requested per node (to compare with MaxRSSGiB).
 
+        This only queries jobs with an End time (unlike most other commands).
+
         If a single argument is given, and it
         looks like a JobID, then use only on that single job with
         --jobs=[JobID].""")
