@@ -230,9 +230,9 @@ def test_seff(db, capsys):
 
 def test_seff_mem(db, capsys):
     data = """
-    JobID,End,ReqMem,MaxRSS
-    111,1970-01-01T00:00:00,10G,
-    111.2,,,8G
+    JobID,End,NNodes,NCPUS,ReqMem,MaxRSS
+    111,1970-01-01T00:00:00,1,1,10G,
+    111.2,,1,1,,8G
     """
     slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
     captured = capsys.readouterr()
