@@ -24,16 +24,16 @@ forms than built-in Slurm commands.  This is especially useful for
 ``sacct``.  You can design your own tools like this.
 
 
+
 Installation
 ------------
 
-Normal ``pip`` installation, name ``slurm2sql`` or ``slurm2sql[cli]``
-for the command line programs.  This installs the library and command
-line programs.
+Normal ``pip`` installation, name ``slurm2sql`` for the command line
+programs.  This installs the library and command line programs.
 
 ::
 
-   pip install slurm2sql[cli]
+   pip install slurm2sql
 
 There is only a single file with no depencecies for the core
 ``slurm2sql`` library (which could also be manually downloaded - HPC,

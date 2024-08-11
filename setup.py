@@ -20,10 +20,10 @@ setuptools.setup(
     #packages=setuptools.find_packages(),
     py_modules=["slurm2sql"],
     keywords='slurm sqlite3',
-    python_requires='>= 2.7, >=3.4',
-    extras_require = {
-        'cli': ["tabulate"],
-    },
+    python_requires='>= 3.6',  # f-strings, if you need older then ask
+    install_requires = [
+        "tabulate",
+        ],
     entry_points={
         'console_scripts': [
             'slurm2sql=slurm2sql:main',

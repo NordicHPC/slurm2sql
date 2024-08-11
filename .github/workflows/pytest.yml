@@ -16,7 +16,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install pytest
-        python -m pip install .[cli]
+        python -m pip install .
     - name: pytest
       run: |
         pytest test.py
