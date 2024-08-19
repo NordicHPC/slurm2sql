@@ -877,12 +877,14 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(NCPUS) AS NCPUS, '
                'max(totalcpu)/max(cputime) AS CPUeff, '  # highest TotalCPU is for the whole allocation
                'max(cputime) AS cpu_s_reserved, '
+               'max(totalcpu) AS cpu_s_used, '
                'max(ReqMemNode) AS MemReq, '
                'max(ReqMemNode*Elapsed) AS mem_s_reserved, ' # highest of any job
                'max(MaxRSS) AS MaxRSS, '
                'max(MaxRSS) / max(ReqMemNode) AS MemEff, '
                'max(NGpus) AS NGpus, '
                'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
+               'max(NGpus)*max(Elapsed)*max(GPUutil) AS gpu_s_used, '
                'max(GPUutil) AS GPUeff, '               # Individual job with highest use (check this)
                'max(GPUMem) AS GPUMem, '
                'MaxDiskRead, '
