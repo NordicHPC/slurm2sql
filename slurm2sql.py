@@ -867,6 +867,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'Partition, '
                'Account, '
                'State, '
+               'Time, '
                'TimeLimit, '
                'min(Start) AS Start, '
                'max(End) AS End, '
