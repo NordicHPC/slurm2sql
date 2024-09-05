@@ -1172,6 +1172,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
 
                          NGpus,
                          iif(NGpus, printf("%3.0f%%",round(GPUeff,2)*100), NULL) AS GPUeff,
+                         iif(NGpus, printf("%4.1f",GPUmem/1073741824), NULL) AS GPUmemGiB,
 
                          round(TotDiskRead/Elapsed/1048576,2) AS read_MiBps,
                          round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps
