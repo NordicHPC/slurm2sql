@@ -2,6 +2,9 @@
 
 # pylint: disable=too-few-public-methods, missing-docstring
 
+"""Import Slurm accounting database from sacct to sqlite3 database
+"""
+
 from __future__ import division, print_function
 
 import argparse
