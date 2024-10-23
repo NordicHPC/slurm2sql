@@ -864,7 +864,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     db.execute('CREATE VIEW IF NOT EXISTS eff AS select '
                'JobIDnostep AS JobID, '
                'max(User) AS User, '
-               'Partition, '
+               'max(Partition), '
                'Account, '
                'State, '
                'Time, '
