@@ -895,7 +895,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'sum(TotDiskRead) as TotDiskRead, '
                'sum(TotDiskWrite) as TotDiskWrite '
                'FROM slurm GROUP BY JobIDnostep')
-    db.execute('PRAGMA journal_mode = WAL;')
+    #db.execute('PRAGMA journal_mode = WAL;')
     db.commit()
     c = db.cursor()
 
