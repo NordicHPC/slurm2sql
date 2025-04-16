@@ -31,7 +31,7 @@ on:
   # For tag-based (instead of Github-specific release-based):
   push:
     tags:
-      - '*'
+      - '*.*.*'
 
 jobs:
   build:
