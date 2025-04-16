@@ -888,7 +888,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(NGpus) AS NGpus, '
                'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
                'max(NGpus)*max(Elapsed)*max(GPUutil) AS gpu_s_used, '
-               'max(GPUutil) AS GPUeff, '               # Individual job with highest use (check this)
+               'max(GPUutil)/max(NGpus) AS GPUeff, '               # Individual job with highest use (check this)
                'max(GPUMem) AS GPUMem, '
                'MaxDiskRead, '
                'MaxDiskWrite, '
