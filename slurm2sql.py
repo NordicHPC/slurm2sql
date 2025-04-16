@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 
-__version__ = '0.9.2'
+__version__ = '0.9.3'
 
 LOG = logging.getLogger('slurm2sql')
 LOG.setLevel(logging.DEBUG)
