@@ -164,8 +164,8 @@ def test_cpueff(db):
 
 def test_gpueff(db):
     data = """
-    JobID,TRESUsageInAve
-    1,gres/gpuutil=23
+    JobID,AllocTRES,TRESUsageInAve
+    1,gres/gpu=1,gres/gpuutil=23
     """
     slurm2sql.slurm2sql(db, [], csv_input=csvdata(data))
     print(db.execute('select * from eff;').fetchall())
