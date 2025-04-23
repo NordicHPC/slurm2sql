@@ -230,14 +230,15 @@ def test_seff(db, capsys):
 
 def test_seff_mem(db, capsys):
     data = """
-    JobID,End,NNodes,NCPUS,ReqMem,MaxRSS
-    111,1970-01-01T00:00:00,1,1,10G,
-    111.2,,1,1,,8G
+    JobID,End,NNodes,NCPUS,ReqMem,MaxRSS,AllocTRES,TRESUsageInTot
+    111,1970-01-01T00:00:00,1,1,10G,,mem=10G,
+    111.2,,1,1,,8G,mem=10G,mem=6G
     """
+    # Changed 2025-04-23: no longer uses ReqMe.m and MaxRSS but AllocTRES and TRESUsageInTot
     slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
     captured = capsys.readouterr()
     assert '111' in captured.out
-    assert '80%' in captured.out
+    assert '60%' in captured.out
 
 def test_seff_gpu(db, capsys):
     data = """

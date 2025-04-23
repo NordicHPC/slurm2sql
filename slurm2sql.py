@@ -467,6 +467,23 @@ class slurmMemEff(linefunc):
             raise ValueError('unknown memory type: %s'%reqmem_type)
         return mem_max / nodemem
 
+RE_TRES_MEM = re.compile(rf'\bmem=([^,]*)\b')
+class slurmMemEff2(linefunc):
+    """Slurm memory efficiency (using AllocTRES and TRESUsageInTot columns).
+
+    This *does* work in new enough Slurm.
+    """
+    # https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
+    type = 'real'
+    @staticmethod
+    def calc(row):
+        m_used = RE_TRES_MEM.search(row['TRESUsageInTot'])
+        m_alloc = RE_TRES_MEM.search(row['AllocTRES'])
+        if m_alloc and m_used:
+            return float_bytes(m_used.group(1)) / float_bytes(m_alloc.group(1))
+        return None
+
+
 class slurmCPUEff(linefunc):
     # This matches the seff tool currently:
     # https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
@@ -589,6 +606,9 @@ COLUMNS = {
     'MinCPUTask': nullstr,
 
     # Memory related
+    '_TotalMem': ExtractField('TotalMem', 'TRESUsageInTot', 'mem', float_bytes),
+    '_AllocMem': ExtractField('AllocMem', 'AllocTRES', 'mem', float_bytes),
+    '_MemEff': slurmMemEff2,            # Calculated from AllocTRES and TRESUsageInTot
     'ReqMem': float_bytes,              # Requested mem, value from slurm.  Sum across all nodes
     '_ReqMemNode': slurmMemNode,        # Mem per node, computed
     '_ReqMemCPU': slurmMemCPU,          # Mem per cpu, computed
@@ -598,7 +618,6 @@ COLUMNS = {
     'MaxRSSTask': nullstr,
     'MaxPages': int_metric,
     'MaxVMSize': slurmmem,
-    #'_MemEff': slurmMemEff,             # Slurm memory efficiency - see above for why this doesn't work
 
     # Disk related
     'AveDiskRead': int_bytes,
@@ -882,9 +901,11 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(cputime) AS cpu_s_reserved, '
                'max(totalcpu) AS cpu_s_used, '
                'max(ReqMemNode) AS MemReq, '
-               'max(ReqMemNode*Elapsed) AS mem_s_reserved, ' # highest of any job
+               'max(AllocMem) AS AllocMem, '
+               'max(TotalMem) AS TotalMem, '
                'max(MaxRSS) AS MaxRSS, '
-               'max(MaxRSS) / max(ReqMemNode) AS MemEff, '
+               'max(MemEff) AS MemEff, '
+               'max(AllocMem*Elapsed) AS mem_s_reserved, ' # highest of any job
                'max(NGpus) AS NGpus, '
                'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
                'max(NGpus)*max(Elapsed)*max(GPUutil) AS gpu_s_used, '
@@ -1011,7 +1032,8 @@ def compact_table():
         )
 
 
-SACCT_DEFAULT_FIELDS = 'JobID,User,State,Start,End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,ReqMem,MaxRSS,ReqGPUS,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
+SACCT_DEFAULT_FIELDS = 'JobID,User,State,Start,End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqGPUS,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
+SACCT_DEFAULT_FIELDS_LONG = 'JobID,User,State,Start,End,Elapsed,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqMem,MaxRSS,ReqGPUS,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
 COMPLETED_STATES = 'CA,CD,DL,F,NF,OOM,PR,RV,TO'
 def sacct_cli(argv=sys.argv[1:], csv_input=None):
     """A command line that uses slurm2sql to give an sacct-like interface."""
@@ -1026,7 +1048,7 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
     parser.add_argument('--db',
                         help="Read from this DB.  Don't import new data.")
     parser.add_argument('--output', '-o', default=SACCT_DEFAULT_FIELDS,
-                        help="Fields to output (comma separated list, use '*' for all fields).  NOT safe from SQL injection")
+                        help="Fields to output (comma separated list, use '*' for all fields).  NOT safe from SQL injection.  If 'long' then some longer default list")
     parser.add_argument('--format', '-f', default=compact_table(),
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--order',
@@ -1048,6 +1070,8 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
     if args.quiet:
         logging.lastResort.setLevel(logging.WARN)
     LOG.debug(args)
+    if args.output == 'long':
+        args.output = SACCT_DEFAULT_FIELDS_LONG
 
     sacct_filter = process_sacct_filter(args, sacct_filter)
 
@@ -1078,8 +1102,6 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
         2019-08-01' here, for example.  To look only at completed
         jobs, use "--completed -S now-1week" (a start time must be
         given with --completed because of how sacct works).
-
-        MemReqGiB is amount requested per node (to compare with MaxRSSGiB).
 
         This only queries jobs with an End time (unlike most other commands).
 
@@ -1140,8 +1162,8 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                                 round(sum(Elapsed*NCPUS)/86400,1) AS cpu_day,
                                 printf("%2.0f%%", 100*sum(Elapsed*NCPUS*CPUEff)/sum(Elapsed*NCPUS)) AS CPUEff,
 
-                                round(sum(Elapsed*MemReq)/1073741824/86400,1) AS mem_GiB_day,
-                                printf("%2.0f%%", 100*sum(Elapsed*MemReq*MemEff)/sum(Elapsed*MemReq)) AS MemEff,
+                                round(sum(Elapsed*AllocMem)/1073741824/86400,1) AS mem_GiB_day,
+                                printf("%2.0f%%", 100*sum(Elapsed*AllocMem*MemEff)/sum(Elapsed*AllocMem)) AS MemEff,
 
                                 round(sum(Elapsed*NGPUs)/86400,1) AS gpu_day,
                                 iif(sum(NGpus), printf("%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)), NULL) AS GPUEff,
@@ -1169,8 +1191,8 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          NCPUS,
                          printf("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff",
 
-                         round(MemReq/1073741824,2) AS MemReqGiB,
-                         round(MaxRSS/1073741824,2) AS MaxRSSGiB,
+                         round(AllocMem/1073741824,2) AS MemAllocGiB,
+                         round(TotalMem/1073741824,2) AS MemTotGiB,
                          printf("%3.0f%%",round(MemEff,2)*100)  AS MemEff,
 
                          NGpus,
