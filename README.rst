@@ -252,43 +252,43 @@ them.  For other columns, check ``man sacct``.
     stripped out and give invalid data.  File an issue and this will
     be added.
 
-* ``ReqMem``: The raw slurm value in a format like "5Gn".  Instead of
-  parsing this, you probably want to use one of the other values below.
+* **Memory related**
 
-* ``ReqMemNode``, ``ReqMemCPU``: Requested memory per node or CPU,
-  either taken from ReqMem (if it matches) or computed (you might want
-  to check our logic if you rely on this).  In Slurm, you
-  can request memory either per-node or per-core, and this calculates
-  the other one for you.
+  * ``AllocMem``: The ``mem=`` value from ``AllocTRES`` field.  You
+    probably want to use this.
 
-* ``ReqMemType``: ``c`` if the user requested mem-per-core originally,
-  ``n`` if mem-per-node.  Extracted from ``ReqMem``.  Modern Slurm has
-  nothing here, and the column value is null.
+  * ``TotalMem``: The ``mem=`` value from ``TRESUsageInTot`` field.
+    You probably want to use this.
 
-* ``ReqMemRaw``: The numeric value of the ``ReqMem``, whether it is
-  ``c`` or ``n``.
+  * ``ReqMem``: The raw slurm value from the ReqMem column.
 
-* ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqTRES``.
+  * ``ReqMemNode``, ``ReqMemCPU``: Requested memory per node or CPU,
+    ``ReqMem`` / ``NNodes``.
 
-* GPU information.  These use values from the ``TRESUsageInAve``
+  * ``MemEff``: Computed ``TotalMem / AllocMem``.
+
+* **GPU information.**  These use values from the ``TRESUsageInAve``
   fields in modern Slurm
 
-  * ``GpuMem``: ``gres/gpumem``
+  * ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqTRES``.
+
+  * ``GpuMem``: ``gres/gpumem`` from ``TRESUsageInAve``
 
   * ``GpuUtil``: ``gres/gpuutil`` (fraction 0.0-1.0).
 
-  * ``NGpus``: Number of GPUs.  Should be the same as ``ReqGPU``, but
-    who knows.
+  * ``NGpus``: Number of GPUs from ``gres/gpu`` in ``AllocTRES``.
+    Should be the same as ``ReqGPU``, but who knows.
 
   * ``GpuUtilTot``, ``GpuMemTot``: like above but using the
     ``TRESUsageInTot`` sacct field.
 
-* ``MemEff``: This is null in the Slurm table now, since Slurm gives
-  ReqMem in allocations and memory used in steps.  The ``eff`` table
-  calculates this now.
+  * ``GpuEff``: ``gres/gpuutil`` (from ``TRESUsageInTot``) / (100 *
+    ``gres/gpu`` (from ``AllocTRES``).
 
 * ``CPUEff``: CPU efficiency (0.0-1.0).  All the same caveats as above
   apply: test before trusting.
+
+* And more, see the code for now.
 
 Quick reference of the other most important columns from the
 accounting database that are hardest to remember:
@@ -302,12 +302,11 @@ accounting database that are hardest to remember:
 
 The ``eff`` table adds the following:
 
-* ``CPUEff``: like CPUEff but for the whole job
+* ``CPUEff``: Highest CPUEff for any job step
 
-* ``MemEff``: Memory efficiency for the whole job (max(MaxRSS) /
-  ReqMem)
+* ``MemEff``: Highest MemEff for any job step
 
-* And more, see the code for now.
+* ``GpuEff``: Highest GpuEff for any job step
 
 
 
