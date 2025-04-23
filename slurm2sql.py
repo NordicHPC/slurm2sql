@@ -896,6 +896,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     db.execute('CREATE TABLE IF NOT EXISTS slurm (%s)'%create_columns)
     db.execute('CREATE TABLE IF NOT EXISTS meta_slurm_lastupdate (id INTEGER PRIMARY KEY, update_time REAL)')
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where JobStep is null;')
+    db.execute('CREATE VIEW IF NOT EXISTS steps AS select * from slurm where JobStep is not null;')
     db.execute('CREATE VIEW IF NOT EXISTS eff AS select '
                'JobIDnostep AS JobID, '
                'max(User) AS User, '
