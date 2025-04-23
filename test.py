@@ -164,12 +164,12 @@ def test_cpueff(db):
 
 def test_gpueff(db):
     data = """
-    JobID,AllocTRES,TRESUsageInAve
+    JobID,AllocTRES,TRESUsageInTot
     1,gres/gpu=1,gres/gpuutil=23
     """
     slurm2sql.slurm2sql(db, [], csv_input=csvdata(data))
     print(db.execute('select * from eff;').fetchall())
-    assert fetch(db, 1, 'GPUEff', table='eff') == 0.23
+    assert fetch(db, 1, 'GpuEff', table='eff') == 0.23
 
 
 #
@@ -242,7 +242,7 @@ def test_seff_mem(db, capsys):
 
 def test_seff_gpu(db, capsys):
     data = """
-    JobID,End,Elapsed,TotalCPU,NCPUS,AllocTRES,TRESUsageInAve
+    JobID,End,Elapsed,TotalCPU,NCPUS,AllocTRES,TRESUsageInTot
     111,1970-01-01T00:00:00,,1,1,,
     111.2,1970-01-01T00:00:00,100,1,1,gres/gpu=1,gres/gpuutil=23
     """
