@@ -383,6 +383,19 @@ class slurmGPUCount(linefunc):
         if m:
             return int(m.group(1))
 
+RE_TRES_GPU = re.compile(rf'\bgres/gpu=([^,]*)\b')
+RE_TRES_GPU_UTIL = re.compile(rf'\bgres/gpuutil=([^,]*)\b')
+class slurmGPUEff2(linefunc):
+    """Slurm GPU efficiency (using AllocTRES and TRESUsageInTot columns).
+    """
+    type = 'real'
+    @staticmethod
+    def calc(row):
+        m_used = RE_TRES_GPU_UTIL.search(row['TRESUsageInTot'])
+        m_alloc = RE_TRES_GPU.search(row['AllocTRES'])
+        if m_alloc and m_used:
+            return (float_metric(m_used.group(1)) / 100.) / float_metric(m_alloc.group(1))
+        return None
 
 # Job ID related stuff
 jobidonly_re = re.compile(r'[0-9]+')
@@ -633,10 +646,10 @@ COLUMNS = {
     '_ReqGPUS': ExtractField('ReqGpus', 'ReqTRES', 'gres/gpu', float_metric),
     'Comment': nullstr_strip,           # Slurm Comment field (at Aalto used for GPU stats)
     #'_GPUMem': slurmGPUMem,             # GPU mem extracted from comment field
-    #'_GPUEff': slurmGPUEff,             # GPU utilization (0.0 to 1.0) extracted from comment field
+    '_GpuEff': slurmGPUEff2,             # GPU utilization (0.0 to 1.0) from AllocTRES()
     #'_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     '_NGpus': ExtractField('NGpus', 'AllocTRES', 'gres/gpu', float_metric),
-    '_GpuUtil': ExtractField('GpuUtil', 'TRESUsageInAve', 'gres/gpuutil', float_metric, wrap=lambda x: x/100.),
+    '_GpuUtil': ExtractField('GpuUtil', 'TRESUsageInAve', 'gres/gpuutil', float_metric, wrap=lambda x: x/100.), # can be >100 for multi-GPU.
     '_GpuMem': ExtractField('GpuMem2', 'TRESUsageInAve', 'gres/gpumem', float_metric),
     '_GpuUtilTot': ExtractField('GpuUtilTot', 'TRESUsageInTot', 'gres/gpuutil', float_metric),
     '_GpuMemTot': ExtractField('GpuMemTot',   'TRESUsageInTot', 'gres/gpumem', float_metric),
@@ -909,7 +922,8 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(NGpus) AS NGpus, '
                'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
                'max(NGpus)*max(Elapsed)*max(GPUutil) AS gpu_s_used, '
-               'max(GPUutil)/max(NGpus) AS GPUeff, '               # Individual job with highest use (check this)
+               #'max(GPUutil)/max(NGpus) AS GPUeff, '               # Individual job with highest use (check this)
+               'max(GPUEff) AS GPUeff, '               # Individual job with highest use (check this)
                'max(GPUMem) AS GPUMem, '
                'MaxDiskRead, '
                'MaxDiskWrite, '
@@ -1032,8 +1046,8 @@ def compact_table():
         )
 
 
-SACCT_DEFAULT_FIELDS = 'JobID,User,State,Start,End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqGPUS,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
-SACCT_DEFAULT_FIELDS_LONG = 'JobID,User,State,Start,End,Elapsed,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqMem,MaxRSS,ReqGPUS,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
+SACCT_DEFAULT_FIELDS = 'JobID,User,State,Start,End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqGPUS,GPUEff,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
+SACCT_DEFAULT_FIELDS_LONG = 'JobID,User,State,Start,End,Elapsed,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqMem,MaxRSS,ReqGPUS,GPUEff,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
 COMPLETED_STATES = 'CA,CD,DL,F,NF,OOM,PR,RV,TO'
 def sacct_cli(argv=sys.argv[1:], csv_input=None):
     """A command line that uses slurm2sql to give an sacct-like interface."""
