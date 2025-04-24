@@ -994,6 +994,12 @@ def process_sacct_filter(args, sacct_filter):
     # Set for completed jobs.
     if getattr(args, 'completed', None):
         sacct_filter[:0] = ['--endtime=now', f'--state={COMPLETED_STATES}']
+    if getattr(args, 'user', None):
+        sacct_filter[:0] = [f'--user={args.user}']
+        # Set args.user to None.  We have already handled it here and
+        # it shouldn't be re-handled in the future SQL code (future
+        # SQL woludn't handle multiple users, for example).
+        args.user = None
     return sacct_filter
 
 def import_or_open_db(args, sacct_filter, csv_input=None):
@@ -1006,17 +1012,17 @@ def import_or_open_db(args, sacct_filter, csv_input=None):
     db: filename of a database to open
 
     """
-    sacct_filter = process_sacct_filter(args, sacct_filter)
-
-    LOG.debug(f'sacct args: {sacct_filter}')
     if args.db:
         db = sqlite3.connect(args.db)
         if sacct_filter:
             LOG.warn("Warning: reading from database.  Any sacct filters are ignored.")
     else:
-         db = sqlite3.connect(':memory:')
-         errors = slurm2sql(db, sacct_filter=sacct_filter,
-                            csv_input=getattr(args, 'csv_input', False) or csv_input)
+        # Import fresh
+        sacct_filter = process_sacct_filter(args, sacct_filter)
+        LOG.debug(f'sacct args: {sacct_filter}')
+        db = sqlite3.connect(':memory:')
+        errors = slurm2sql(db, sacct_filter=sacct_filter,
+                           csv_input=getattr(args, 'csv_input', False) or csv_input)
     return db
 
 
@@ -1093,6 +1099,7 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
     parser.add_argument('--completed', '-c', action='store_true',
                         help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'")
+    parser.add_argument('--user', '-u', help="Limit to this or these users.  This specific argument will work with --db, if it's a single user.")
     parser.add_argument('--csv-input',
                         help="Don't parse sacct but import this CSV file.  It's read with "
                              "Python's default csv reader (excel format).  Beware badly "
@@ -1113,9 +1120,14 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
 
     db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
 
-    from tabulate import tabulate
+    # If we run sacct, then args.user is set to None so we don't do double filtering here
+    if args.user:
+        where_user = "WHERE user=:user"
+    else:
+        where_user = ''
 
-    cur = db.execute(f'select {args.output} from slurm')
+    from tabulate import tabulate
+    cur = db.execute(f'select {args.output} from slurm {where_user}', {'user':args.user})
     headers = [ x[0] for x in cur.description ]
     print(tabulate(cur, headers=headers, tablefmt=args.format))
 
@@ -1151,6 +1163,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
     parser.add_argument('--completed', '-c', action='store_true',
                         help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.")
+    parser.add_argument('--user', '-u', help="Limit to this or these users.  This specific argument will work with --db, if it's a single user.")
     parser.add_argument('--csv-input',
                         help="Don't parse sacct but import this CSV file.  It's read with "
                              "Python's default csv reader (excel format).  Beware badly "
@@ -1171,6 +1184,13 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
         order_by = f'ORDER BY {args.order}'
     else:
         order_by = ''
+
+    # If we run sacct, then args.user is set to None so we don't do double filtering here
+    if args.user:
+        where_user = "and user=:user"
+    else:
+        where_user = ''
+
 
     db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
 
@@ -1194,9 +1214,9 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                                 round(sum(TotDiskWrite/1048576)/sum(Elapsed),2) AS write_MiBps
 
                                 FROM eff
-                                WHERE End IS NOT NULL
+                                WHERE End IS NOT NULL {where_user}
                             GROUP BY user ) {order_by}
-                            """)
+                            """, {'user': args.user})
         headers = [ x[0] for x in cur.description ]
         data = cur.fetchall()
         if len(data) == 0:
@@ -1225,7 +1245,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps
 
                          FROM eff
-                         WHERE End IS NOT NULL ) {order_by}""")
+                         WHERE End IS NOT NULL {where_user} ) {order_by}""", {'user': args.user})
     headers = [ x[0] for x in cur.description ]
     data = cur.fetchall()
     if len(data) == 0:
