@@ -996,6 +996,29 @@ def process_sacct_filter(args, sacct_filter):
         sacct_filter[:0] = ['--endtime=now', f'--state={COMPLETED_STATES}']
     return sacct_filter
 
+def import_or_open_db(args, sacct_filter, csv_input=None):
+    """Helper function to either open a DB or generate a new in-mem one from sacct
+
+    The `args` sholud be an argparse argument option.  This function
+    will look at its arguments and do what it says.  So, if you want
+    various features, you need to define these arguments in argparse:
+
+    db: filename of a database to open
+
+    """
+    sacct_filter = process_sacct_filter(args, sacct_filter)
+
+    LOG.debug(f'sacct args: {sacct_filter}')
+    if args.db:
+        db = sqlite3.connect(args.db)
+        if sacct_filter:
+            LOG.warn("Warning: reading from database.  Any sacct filters are ignored.")
+    else:
+         db = sqlite3.connect(':memory:')
+         errors = slurm2sql(db, sacct_filter=sacct_filter,
+                            csv_input=getattr(args, 'csv_input', False) or csv_input)
+    return db
+
 
 def update_last_timestamp(db, update_time=None):
     """Update the last update time in the database, for resuming.
@@ -1088,15 +1111,7 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
     if args.output == 'long':
         args.output = SACCT_DEFAULT_FIELDS_LONG
 
-    sacct_filter = process_sacct_filter(args, sacct_filter)
-
-    LOG.debug(f'sacct args: {sacct_filter}')
-    if args.db:
-        db = sqlite3.connect(args.db)
-    else:
-         db = sqlite3.connect(':memory:')
-         errors = slurm2sql(db, sacct_filter=sacct_filter,
-                            csv_input=args.csv_input or csv_input)
+    db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
 
     from tabulate import tabulate
 
@@ -1152,20 +1167,12 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
         logging.lastResort.setLevel(logging.WARN)
     LOG.debug(args)
 
-    sacct_filter = process_sacct_filter(args, sacct_filter)
-
     if args.order:
         order_by = f'ORDER BY {args.order}'
     else:
         order_by = ''
 
-    LOG.debug(f'sacct args: {sacct_filter}')
-    if args.db:
-        db = sqlite3.connect(args.db)
-    else:
-         db = sqlite3.connect(':memory:')
-         errors = slurm2sql(db, sacct_filter=sacct_filter,
-                            csv_input=args.csv_input or csv_input)
+    db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
 
     from tabulate import tabulate
 
