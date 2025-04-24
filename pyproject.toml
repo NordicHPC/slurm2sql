@@ -39,6 +39,8 @@ test = [
     slurm2sql = "slurm2sql:main"
     slurm2sql-sacct = "slurm2sql:sacct_cli"
     slurm2sql-seff = "slurm2sql:seff_cli"
+    sacct2 = "slurm2sql:sacct_cli"
+    seff2 = "slurm2sql:seff_cli"
 
 [project.urls]
 Repository = "https://github.com/NordicHPC/slurm2sql"
