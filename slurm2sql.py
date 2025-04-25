@@ -1086,8 +1086,8 @@ def compact_table():
         )
 
 
-SACCT_DEFAULT_FIELDS = 'JobID,User,State,Start,End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqGPUS,GPUEff,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
-SACCT_DEFAULT_FIELDS_LONG = 'JobID,User,State,Start,End,Elapsed,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqMem,MaxRSS,ReqGPUS,GPUEff,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot'
+SACCT_DEFAULT_FIELDS = "JobID,User,State,datetime(Start, 'unixepoch') AS Start,datetime(End, 'unixepoch') AS End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqGPUS,GPUEff,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot"
+SACCT_DEFAULT_FIELDS_LONG = "JobID,User,State,datetime(Start, 'unixepoch') AS Start,datetime(End, 'unixepoch') AS End,Elapsed,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqMem,MaxRSS,ReqGPUS,GPUEff,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot"
 COMPLETED_STATES = 'CA,CD,DL,F,NF,OOM,PR,RV,TO'
 def sacct_cli(argv=sys.argv[1:], csv_input=None):
     """A command line that uses slurm2sql to give an sacct-like interface."""
