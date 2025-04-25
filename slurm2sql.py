@@ -1000,6 +1000,9 @@ def process_sacct_filter(args, sacct_filter):
         # it shouldn't be re-handled in the future SQL code (future
         # SQL woludn't handle multiple users, for example).
         args.user = None
+    if getattr(args, 'running_at_time', None):
+        sacct_filter[:0] = [f'--start={args.running_at_time}', f'--end={args.running_at_time}', '--state=RUNNING' ]
+        args.running_at_time = None
     return sacct_filter
 
 def import_or_open_db(args, sacct_filter, csv_input=None):
@@ -1098,8 +1101,9 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
     parser.add_argument('--order',
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
     parser.add_argument('--completed', '-c', action='store_true',
-                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'")
-    parser.add_argument('--user', '-u', help="Limit to this or these users.  This specific argument will work with --db, if it's a single user.")
+                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
+    parser.add_argument('--user', '-u', help="Limit to this or these users.  Compatible with --db.")
+    parser.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Expanded to --start=TIME --end=TIME --state=R.  Not compatible with --db.")
     parser.add_argument('--csv-input',
                         help="Don't parse sacct but import this CSV file.  It's read with "
                              "Python's default csv reader (excel format).  Beware badly "
