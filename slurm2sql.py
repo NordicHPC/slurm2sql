@@ -703,7 +703,7 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None, csv_input=None):
         logging.lastResort.setLevel(logging.WARN)
     LOG.debug(args)
 
-    sacct_filter = process_sacct_filter(args, sacct_filter)
+    sacct_filter = args_to_sacct_filter(args, sacct_filter)
 
     # db is only given as an argument in tests (normally)
     if db is None:
@@ -982,7 +982,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     return errors[0]
 
 
-def process_sacct_filter(args, sacct_filter):
+def args_to_sacct_filter(args, sacct_filter):
     """Generate sacct filter args in a standard way
 
     For example adding a --completed argument that translates into
@@ -1005,6 +1005,13 @@ def process_sacct_filter(args, sacct_filter):
         args.running_at_time = None
     return sacct_filter
 
+def args_to_sql_where(args):
+    where = [ ]
+    if getattr(args, 'user', None):
+        where.append('and user=:user')
+    return ' '.join(where)
+
+
 def import_or_open_db(args, sacct_filter, csv_input=None):
     """Helper function to either open a DB or generate a new in-mem one from sacct
 
@@ -1021,7 +1028,7 @@ def import_or_open_db(args, sacct_filter, csv_input=None):
             LOG.warn("Warning: reading from database.  Any sacct filters are ignored.")
     else:
         # Import fresh
-        sacct_filter = process_sacct_filter(args, sacct_filter)
+        sacct_filter = args_to_sacct_filter(args, sacct_filter)
         LOG.debug(f'sacct args: {sacct_filter}')
         db = sqlite3.connect(':memory:')
         errors = slurm2sql(db, sacct_filter=sacct_filter,
@@ -1125,13 +1132,10 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
     db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
 
     # If we run sacct, then args.user is set to None so we don't do double filtering here
-    if args.user:
-        where_user = "WHERE user=:user"
-    else:
-        where_user = ''
+    where = args_to_sql_where(args)
 
     from tabulate import tabulate
-    cur = db.execute(f'select {args.output} from slurm {where_user}', {'user':args.user})
+    cur = db.execute(f'select {args.output} from slurm WHERE true {where}', {'user':args.user})
     headers = [ x[0] for x in cur.description ]
     print(tabulate(cur, headers=headers, tablefmt=args.format))
 
@@ -1189,14 +1193,10 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
     else:
         order_by = ''
 
-    # If we run sacct, then args.user is set to None so we don't do double filtering here
-    if args.user:
-        where_user = "and user=:user"
-    else:
-        where_user = ''
-
-
     db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
+
+    # If we run sacct, then args.user is set to None so we don't do double filtering here
+    where = args_to_sql_where(args)
 
     from tabulate import tabulate
 
@@ -1218,7 +1218,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                                 round(sum(TotDiskWrite/1048576)/sum(Elapsed),2) AS write_MiBps
 
                                 FROM eff
-                                WHERE End IS NOT NULL {where_user}
+                                WHERE End IS NOT NULL WHERE true {where}
                             GROUP BY user ) {order_by}
                             """, {'user': args.user})
         headers = [ x[0] for x in cur.description ]
@@ -1249,7 +1249,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps
 
                          FROM eff
-                         WHERE End IS NOT NULL {where_user} ) {order_by}""", {'user': args.user})
+                         WHERE End IS NOT NULL {where} ) {order_by}""", {'user': args.user})
     headers = [ x[0] for x in cur.description ]
     data = cur.fetchall()
     if len(data) == 0:
