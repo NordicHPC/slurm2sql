@@ -900,7 +900,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     db.execute('CREATE VIEW IF NOT EXISTS eff AS select '
                'JobIDnostep AS JobID, '
                'max(User) AS User, '
-               'max(Partition), '
+               'max(Partition) AS Partition, '
                'Account, '
                'State, '
                'Time, '
@@ -1000,6 +1000,9 @@ def args_to_sacct_filter(args, sacct_filter):
         # it shouldn't be re-handled in the future SQL code (future
         # SQL woludn't handle multiple users, for example).
         args.user = None
+    if getattr(args, 'partition', None):
+        sacct_filter[:0] = [f'--partition={args.partition}']
+        args.partition = None
     if getattr(args, 'running_at_time', None):
         sacct_filter[:0] = [f'--start={args.running_at_time}', f'--end={args.running_at_time}', '--state=RUNNING' ]
         args.running_at_time = None
@@ -1009,6 +1012,8 @@ def args_to_sql_where(args):
     where = [ ]
     if getattr(args, 'user', None):
         where.append('and user=:user')
+    if getattr(args, 'partition', None):
+        where.append("and Partition like '%'||:partition||'%'")
     return ' '.join(where)
 
 
@@ -1107,10 +1112,6 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--order',
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
-    parser.add_argument('--completed', '-c', action='store_true',
-                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
-    parser.add_argument('--user', '-u', help="Limit to this or these users.  Compatible with --db.")
-    parser.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Expanded to --start=TIME --end=TIME --state=R.  Not compatible with --db.")
     parser.add_argument('--csv-input',
                         help="Don't parse sacct but import this CSV file.  It's read with "
                              "Python's default csv reader (excel format).  Beware badly "
@@ -1119,6 +1120,16 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
                         help="Output more logging info")
+    # No --db compatibility
+    group = parser.add_argument_group(description="Selectors that only works when getting new data (not with --db):")
+    group.add_argument('--completed', '-c', action='store_true',
+                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
+    group.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Not compatible with --db.  Expanded to --start=TIME --end=TIME --state=R.")
+    # --db compatibility
+    group = parser.add_argument_group(description="Selectors that also work with --db:")
+    group.add_argument('--user', '-u', help="Limit to this or these users.  Compatible with --db.")
+    group.add_argument('--partition', '-r', help="Jobs in this partition.  Works with --db.  Getting fresh data, an exact match and can be a comma separated list.  With --db, a raw glob match.")
+
     args, sacct_filter = parser.parse_known_args(argv)
 
     if args.verbose:
@@ -1135,7 +1146,8 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
     where = args_to_sql_where(args)
 
     from tabulate import tabulate
-    cur = db.execute(f'select {args.output} from slurm WHERE true {where}', {'user':args.user})
+    cur = db.execute(f'select {args.output} from slurm WHERE true {where}',
+                     {'user':args.user, 'partition': args.partition})
     headers = [ x[0] for x in cur.description ]
     print(tabulate(cur, headers=headers, tablefmt=args.format))
 
@@ -1169,9 +1181,6 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                         help="Aggregate data by user.")
     parser.add_argument('--order',
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
-    parser.add_argument('--completed', '-c', action='store_true',
-                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.")
-    parser.add_argument('--user', '-u', help="Limit to this or these users.  This specific argument will work with --db, if it's a single user.")
     parser.add_argument('--csv-input',
                         help="Don't parse sacct but import this CSV file.  It's read with "
                              "Python's default csv reader (excel format).  Beware badly "
@@ -1180,6 +1189,16 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
                         help="Output more logging info")
+    # No --db compatibility
+    group = parser.add_argument_group(description="Selectors that only works when getting new data (not with --db):")
+    group.add_argument('--completed', '-c', action='store_true',
+                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
+    group.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Not compatible with --db.  Expanded to --start=TIME --end=TIME --state=R.")
+    # --db compatibility
+    group = parser.add_argument_group(description="Selectors that also work with --db:")
+    group.add_argument('--user', '-u', help="Limit to this or these users.  Compatible with --db.")
+    group.add_argument('--partition', '-r', help="Jobs in this partition.  Works with --db.  Getting fresh data, an exact match and can be a comma separated list.  With --db, a raw glob match.")
+
     args, sacct_filter = parser.parse_known_args(argv)
 
     if args.verbose:
@@ -1218,9 +1237,9 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                                 round(sum(TotDiskWrite/1048576)/sum(Elapsed),2) AS write_MiBps
 
                                 FROM eff
-                                WHERE End IS NOT NULL WHERE true {where}
+                                WHERE End IS NOT NULL {where}
                             GROUP BY user ) {order_by}
-                            """, {'user': args.user})
+                            """, {'user': args.user, 'partition': args.partition})
         headers = [ x[0] for x in cur.description ]
         data = cur.fetchall()
         if len(data) == 0:
@@ -1249,7 +1268,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps
 
                          FROM eff
-                         WHERE End IS NOT NULL {where} ) {order_by}""", {'user': args.user})
+                         WHERE End IS NOT NULL {where} ) {order_by}""", {'user': args.user, 'partition': args.partition})
     headers = [ x[0] for x in cur.description ]
     data = cur.fetchall()
     if len(data) == 0:
