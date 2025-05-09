@@ -373,6 +373,7 @@ class slurmGPUCountComment(linefunc):
 
 
 gpu_re2 = re.compile(r'gpu=(\d+)')
+gpu_re2_type = re.compile(rf'\bgres/gpu:([^=]+)=\b')
 class slurmGPUCount(linefunc):
     type = 'int'
     @staticmethod
@@ -382,6 +383,14 @@ class slurmGPUCount(linefunc):
         m = gpu_re2.search(tres)
         if m:
             return int(m.group(1))
+class slurmGPUType(linefunc):
+    type = 'text'
+    @staticmethod
+    def calc(row):
+        if not row['AllocTRES']:  return None
+        m = gpu_re2_type.search(row['AllocTRES'])
+        if m:
+            return m.group(1)
 
 RE_TRES_GPU = re.compile(rf'\bgres/gpu=([^,]*)\b')
 RE_TRES_GPU_UTIL = re.compile(rf'\bgres/gpuutil=([^,]*)\b')
@@ -649,6 +658,7 @@ COLUMNS = {
     '_GpuEff': slurmGPUEff2,             # GPU utilization (0.0 to 1.0) from AllocTRES()
     #'_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     '_NGpus': ExtractField('NGpus', 'AllocTRES', 'gres/gpu', float_metric),
+    '_GpuType': slurmGPUType,            # gres/gpu:TYPE= from AllocTres
     '_GpuUtil': ExtractField('GpuUtil', 'TRESUsageInAve', 'gres/gpuutil', float_metric, wrap=lambda x: x/100.), # can be >100 for multi-GPU.
     '_GpuMem': ExtractField('GpuMem2', 'TRESUsageInAve', 'gres/gpumem', float_metric),
     '_GpuUtilTot': ExtractField('GpuUtilTot', 'TRESUsageInTot', 'gres/gpuutil', float_metric),
@@ -921,6 +931,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(MemEff) AS MemEff, '
                'max(AllocMem*Elapsed) AS mem_s_reserved, ' # highest of any job
                'max(NGpus) AS NGpus, '
+               'max(GPUType) AS GPUType, '
                'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
                'max(NGpus)*max(Elapsed)*max(GPUutil) AS gpu_s_used, '
                #'max(GPUutil)/max(NGpus) AS GPUeff, '               # Individual job with highest use (check this)
