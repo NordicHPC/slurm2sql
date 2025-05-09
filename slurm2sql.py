@@ -911,6 +911,8 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'JobIDnostep AS JobID, '
                'max(User) AS User, '
                'max(Partition) AS Partition, '
+               'max(JobName) AS JobName, '
+               'group_concat(SubmitLine, \'\n\') AS SubmitLines, '
                'Account, '
                'State, '
                'Time, '
