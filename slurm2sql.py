@@ -915,6 +915,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'group_concat(SubmitLine, \'\n\') AS SubmitLines, '
                'Account, '
                'State, '
+               'NodeList, '
                'Time, '
                'TimeLimit, '
                'min(Start) AS Start, '
