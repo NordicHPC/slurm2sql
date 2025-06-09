@@ -1272,6 +1272,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          JobID,
                          User,
                          round(Elapsed/3600,2) AS hours,
+                         substr(state, 1, 2) AS ST,
                          {long_output}
 
                          NCPUS,
@@ -1296,8 +1297,8 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
         print("No data fetched with these sacct options.")
         exit(2)
     print(tabulate(data, headers=headers, tablefmt=args.format,
-                       colalign=('decimal', 'center', 'decimal',
-                                 *(['center', 'center'] if long_output else []),
+                       colalign=('decimal', 'center', 'decimal', 'center',
+                                 *(['center', 'center'] if long_output else []),  # long output formats if enabled
                                  'decimal', 'right', # cpu
                                  'decimal', 'decimal', 'right', # mem
                                  'decimal', 'right', # gpu
