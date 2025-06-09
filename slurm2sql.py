@@ -1195,6 +1195,8 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                         help="Aggregate data by user.")
     parser.add_argument('--order',
                         help="SQL order by (arbitrary SQL expression using column names).  NOT safe from SQL injection.")
+    parser.add_argument('--long', '-l', action='store_true',
+                        help="Longer output format that includes job start/end times.")
     parser.add_argument('--csv-input',
                         help="Don't parse sacct but import this CSV file.  It's read with "
                              "Python's default csv reader (excel format).  Beware badly "
@@ -1225,6 +1227,10 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
         order_by = f'ORDER BY {args.order}'
     else:
         order_by = ''
+
+    long_output = ''
+    if args.long:
+        long_output = "strftime('%Y-%m-%d %H:%M', Start, 'unixepoch') AS Start, strftime('%Y-%m-%d %H:%M', End, 'unixepoch') AS End,"
 
     db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
 
@@ -1266,6 +1272,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          JobID,
                          User,
                          round(Elapsed/3600,2) AS hours,
+                         {long_output}
 
                          NCPUS,
                          printf("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff",
@@ -1289,7 +1296,8 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
         print("No data fetched with these sacct options.")
         exit(2)
     print(tabulate(data, headers=headers, tablefmt=args.format,
-                       colalign=('decimal', 'left', 'decimal',
+                       colalign=('decimal', 'center', 'decimal',
+                                 *(['center', 'center'] if long_output else []),
                                  'decimal', 'right', # cpu
                                  'decimal', 'decimal', 'right', # mem
                                  'decimal', 'right', # gpu
