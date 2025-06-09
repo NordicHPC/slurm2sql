@@ -1230,7 +1230,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
 
     long_output = ''
     if args.long:
-        long_output = "strftime('%Y-%m-%d %H:%M', Start, 'unixepoch') AS Start, strftime('%Y-%m-%d %H:%M', End, 'unixepoch') AS End,"
+        long_output = "strftime('%m-%d_%H:%M', Start, 'unixepoch') AS Start, strftime('%m-%d_%H:%M', End, 'unixepoch') AS End,"
 
     db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
 
