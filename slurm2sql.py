@@ -699,8 +699,14 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None, csv_input=None):
                         help="Don't parse sacct but import this CSV file.  It's read with "
                              "Python's default csv reader (excel format).  Beware badly "
                              "formatted inputs, for example line breaks in job names.")
-    parser.add_argument('--completed', '-c', action='store_true',
-                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'")
+    parser.add_argument('--ended', '-e', action='store_true',
+                        help=f"Select for finished job states ({ENDED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
+    parser.add_argument('--completed', action='store_true', help=f"Like --ended but {COMPLETED_STATES}")
+    parser.add_argument('--cancelled', action='store_true', help=f"Like --ended but {CANCELLED_STATES}")
+    parser.add_argument('--failed', action='store_true', help=f"Like --ended but {FAILED_STATES}")
+    parser.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Not compatible with --db.  Expanded to --start=TIME --end=TIME --state=R.")
+
+
     parser.add_argument('--quiet', '-q', action='store_true',
                         help="Don't output anything unless errors")
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -914,7 +920,8 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(JobName) AS JobName, '
                'group_concat(SubmitLine, \'\n\') AS SubmitLines, '
                'Account, '
-               'State, '
+               '(SELECT State FROM allocations AS allocations2 WHERE allocations2.jobid=slurm1.JobIDnostep) AS State, '
+               #'State AS State, '
                'NodeList, '
                'Time, '
                'TimeLimit, '
@@ -944,7 +951,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'MaxDiskWrite, '
                'sum(TotDiskRead) as TotDiskRead, '
                'sum(TotDiskWrite) as TotDiskWrite '
-               'FROM slurm GROUP BY JobIDnostep')
+               'FROM slurm AS slurm1 GROUP BY JobIDnostep')
     #db.execute('PRAGMA journal_mode = WAL;')
     db.commit()
     c = db.cursor()
@@ -1006,8 +1013,14 @@ def args_to_sacct_filter(args, sacct_filter):
     if len(sacct_filter) == 1 and re.match(r'[0-9+_]+(.[0-9a-z]+)?', sacct_filter[0]):
         sacct_filter = [f'--jobs={sacct_filter[0]}']
     # Set for completed jobs.
+    if getattr(args, 'ended', None):
+        sacct_filter[:0] = ['--endtime=now', f'--state={ENDED_STATES}']
     if getattr(args, 'completed', None):
         sacct_filter[:0] = ['--endtime=now', f'--state={COMPLETED_STATES}']
+    if getattr(args, 'cancelled', None):
+        sacct_filter[:0] = ['--endtime=now', f'--state={CANCELLED_STATES}']
+    if getattr(args, 'failed', None):
+        sacct_filter[:0] = ['--endtime=now', f'--state={FAILED_STATES}']
     if getattr(args, 'user', None):
         sacct_filter[:0] = [f'--user={args.user}']
         # Set args.user to None.  We have already handled it here and
@@ -1107,7 +1120,10 @@ def compact_table():
 
 SACCT_DEFAULT_FIELDS = "JobID,User,State,datetime(Start, 'unixepoch') AS Start,datetime(End, 'unixepoch') AS End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqGPUS,GPUEff,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot"
 SACCT_DEFAULT_FIELDS_LONG = "JobID,User,State,datetime(Start, 'unixepoch') AS Start,datetime(End, 'unixepoch') AS End,Elapsed,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqMem,MaxRSS,ReqGPUS,GPUEff,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot"
-COMPLETED_STATES = 'CA,CD,DL,F,NF,OOM,PR,RV,TO'
+ENDED_STATES = 'CA,CD,DL,F,NF,OOM,PR,RV,TO'
+COMPLETED_STATES = 'CD'
+CANCELLED_STATES = 'CA,DL'
+FAILED_STATES = 'F,NF,OOM,TO'
 def sacct_cli(argv=sys.argv[1:], csv_input=None):
     """A command line that uses slurm2sql to give an sacct-like interface."""
     parser = argparse.ArgumentParser(description=
@@ -1136,9 +1152,13 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
                         help="Output more logging info")
     # No --db compatibility
     group = parser.add_argument_group(description="Selectors that only works when getting new data (not with --db):")
-    group.add_argument('--completed', '-c', action='store_true',
-                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
-    group.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Not compatible with --db.  Expanded to --start=TIME --end=TIME --state=R.")
+    state_grp = group.add_mutually_exclusive_group()
+    state_grp.add_argument('--ended', '-e', action='store_true',
+                        help=f"Select for finished job states ({ENDED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
+    state_grp.add_argument('--completed', action='store_true', help=f"Like --ended but {COMPLETED_STATES}")
+    state_grp.add_argument('--cancelled', action='store_true', help=f"Like --ended but {CANCELLED_STATES}")
+    state_grp.add_argument('--failed', action='store_true', help=f"Like --ended but {FAILED_STATES}")
+    state_grp.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Not compatible with --db.  Expanded to --start=TIME --end=TIME --state=R.")
     # --db compatibility
     group = parser.add_argument_group(description="Selectors that also work with --db:")
     group.add_argument('--user', '-u', help="Limit to this or these users.  Compatible with --db.")
@@ -1168,7 +1188,7 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
 
 def seff_cli(argv=sys.argv[1:], csv_input=None):
     parser = argparse.ArgumentParser(usage=
-        "slurm2sql-seff [-h] [--order ORDER] [--completed --starttime TIME] SACCT_ARGS",
+        "slurm2sql-seff [-h] [--order ORDER] [--ended --starttime TIME] SACCT_ARGS",
         description=
         """Print out efficiency of different jobs.  Included is CPU,
         memory, GPU, and i/o stats.
@@ -1176,8 +1196,8 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
         All extra arguments get passed to `sacct` to fetch data job
         data.  For example, one would usually give '-a' or '-S
         2019-08-01' here, for example.  To look only at completed
-        jobs, use "--completed -S now-1week" (a start time must be
-        given with --completed because of how sacct works).
+        jobs, use "--ended -S now-1week" (a start time must be
+        given with --ended because of how sacct works).
 
         This only queries jobs with an End time (unlike most other commands).
 
@@ -1207,9 +1227,13 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                         help="Output more logging info")
     # No --db compatibility
     group = parser.add_argument_group(description="Selectors that only works when getting new data (not with --db):")
-    group.add_argument('--completed', '-c', action='store_true',
-                        help=f"Select for completed job states ({COMPLETED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
-    group.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Not compatible with --db.  Expanded to --start=TIME --end=TIME --state=R.")
+    state_grp = group.add_mutually_exclusive_group()
+    state_grp.add_argument('--ended', '-e', action='store_true',
+                        help=f"Select for finished job states ({ENDED_STATES})  You need to specify --starttime (-S) at some point in the past, due to how saccont default works (for example '-S now-1week').  This option automatically sets '-E now'.  Not compatible with --db.")
+    state_grp.add_argument('--completed', action='store_true', help=f"Like --ended but {COMPLETED_STATES}")
+    state_grp.add_argument('--cancelled', action='store_true', help=f"Like --ended but {CANCELLED_STATES}")
+    state_grp.add_argument('--failed', action='store_true', help=f"Like --ended but {FAILED_STATES}")
+    state_grp.add_argument('--running-at-time', metavar='TIME', help="Only jobs running at this time.  Not compatible with --db.  Expanded to --start=TIME --end=TIME --state=R.")
     # --db compatibility
     group = parser.add_argument_group(description="Selectors that also work with --db:")
     group.add_argument('--user', '-u', help="Limit to this or these users.  Compatible with --db.")
@@ -1272,7 +1296,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          JobID,
                          User,
                          round(Elapsed/3600,2) AS hours,
-                         substr(state, 1, 2) AS ST,
+                         substr(State, 1, 2) AS ST,
                          {long_output}
 
                          NCPUS,
@@ -1290,7 +1314,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps
 
                          FROM eff
-                         WHERE End IS NOT NULL {where} ) {order_by}""", {'user': args.user, 'partition': args.partition})
+                         WHERE Start IS NOT NULL and End IS NOT NULL {where} ) {order_by}""", {'user': args.user, 'partition': args.partition})
     headers = [ x[0] for x in cur.description ]
     data = cur.fetchall()
     if len(data) == 0:
