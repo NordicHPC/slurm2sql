@@ -219,9 +219,9 @@ def test_sacct(db, capsys):
 #
 def test_seff(db, capsys):
     data = """
-    JobID,End,CPUTime,TotalCPU
-    111,1970-01-01T00:00:00,50:00,25:00
-    111.2,,,25:00
+    JobID,Start,End,CPUTime,TotalCPU
+    111,1970-01-01T00:00:00,1970-01-01T00:50:00,50:00,25:00
+    111.2,,,,25:00
     """
     slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
     captured = capsys.readouterr()
@@ -230,9 +230,9 @@ def test_seff(db, capsys):
 
 def test_seff_mem(db, capsys):
     data = """
-    JobID,End,NNodes,NCPUS,ReqMem,MaxRSS,AllocTRES,TRESUsageInTot
-    111,1970-01-01T00:00:00,1,1,10G,,mem=10G,
-    111.2,,1,1,,8G,mem=10G,mem=6G
+    JobID,Start,End,NNodes,NCPUS,ReqMem,MaxRSS,AllocTRES,TRESUsageInTot
+    111,1970-01-01T00:00:00,1970-01-01T00:50:00,1,1,10G,,mem=10G,
+    111.2,,,1,1,,8G,mem=10G,mem=6G
     """
     # Changed 2025-04-23: no longer uses ReqMe.m and MaxRSS but AllocTRES and TRESUsageInTot
     slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
@@ -242,9 +242,9 @@ def test_seff_mem(db, capsys):
 
 def test_seff_gpu(db, capsys):
     data = """
-    JobID,End,Elapsed,TotalCPU,NCPUS,AllocTRES,TRESUsageInTot
-    111,1970-01-01T00:00:00,,1,1,,
-    111.2,1970-01-01T00:00:00,100,1,1,gres/gpu=1,gres/gpuutil=23
+    JobID,Start,End,Elapsed,TotalCPU,NCPUS,AllocTRES,TRESUsageInTot
+    111,1970-01-01T00:00:00,1970-01-01T00:50:00,,1,1,,
+    111.2,1970-01-01T00:00:00,1970-01-01T00:50:00,100,1,1,gres/gpu=1,gres/gpuutil=23
     """
     slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
     captured = capsys.readouterr()
