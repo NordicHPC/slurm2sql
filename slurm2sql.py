@@ -1118,8 +1118,8 @@ def compact_table():
         )
 
 
-SACCT_DEFAULT_FIELDS = "JobID,User,State,datetime(Start, 'unixepoch') AS Start,datetime(End, 'unixepoch') AS End,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqGPUS,GPUEff,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot"
-SACCT_DEFAULT_FIELDS_LONG = "JobID,User,State,datetime(Start, 'unixepoch') AS Start,datetime(End, 'unixepoch') AS End,Elapsed,Partition,ExitCodeRaw,NodeList,NCPUS,CPUtime,CPUEff,AllocMem,TotalMem,MemEff,ReqMem,MaxRSS,ReqGPUS,GPUEff,GPUUtil,TotDiskRead,TotDiskWrite,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot"
+SACCT_DEFAULT_FIELDS = "JobID,User,State,'┃' AS t, datetime(Start, 'unixepoch') AS Start,datetime(End, 'unixepoch') AS End,'┃' AS b, Partition,ExitCodeRaw,NodeList,'┃' AS c, NCPUS,CPUtime,CPUEff,'┃' AS m,AllocMem,TotalMem,MemEff,'┃' AS g,ReqGPUS,GPUEff,'┃' AS d,TotDiskRead,TotDiskWrite,'┃' AS r,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot"
+SACCT_DEFAULT_FIELDS_LONG = "JobID,User,State,'┃' AS t, datetime(Start, 'unixepoch') AS Start,datetime(End, 'unixepoch') AS End,Elapsed,'┃' AS b, Partition,ExitCodeRaw,NodeList,'┃' AS c, NCPUS,CPUtime,CPUEff,'┃' AS m, AllocMem,TotalMem,MemEff,ReqMem,MaxRSS,'┃' AS g, ReqGPUS,GPUEff,GPUUtil,'┃' AS d,TotDiskRead,TotDiskWrite,'┃' AS r,ReqTRES,AllocTRES,TRESUsageInTot,TRESUsageOutTot"
 ENDED_STATES = 'CA,CD,DL,F,NF,OOM,PR,RV,TO'
 COMPLETED_STATES = 'CD'
 CANCELLED_STATES = 'CA,DL'
@@ -1268,15 +1268,19 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                                 User,
                                 round(sum(Elapsed)/86400,1) AS days,
 
+                               "┃" AS "c",
                                 round(sum(Elapsed*NCPUS)/86400,1) AS cpu_day,
                                 printf("%2.0f%%", 100*sum(Elapsed*NCPUS*CPUEff)/sum(Elapsed*NCPUS)) AS CPUEff,
 
+                               "┃" AS "m",
                                 round(sum(Elapsed*AllocMem)/1073741824/86400,1) AS mem_GiB_day,
                                 printf("%2.0f%%", 100*sum(Elapsed*AllocMem*MemEff)/sum(Elapsed*AllocMem)) AS MemEff,
 
+                               "┃" AS "g",
                                 round(sum(Elapsed*NGPUs)/86400,1) AS gpu_day,
                                 iif(sum(NGpus), printf("%2.0f%%", 100*sum(Elapsed*NGPUs*GPUeff)/sum(Elapsed*NGPUs)), NULL) AS GPUEff,
 
+                               "┃" AS "d",
                                 round(sum(TotDiskRead/1048576)/sum(Elapsed),2) AS read_MiBps,
                                 round(sum(TotDiskWrite/1048576)/sum(Elapsed),2) AS write_MiBps
 
@@ -1299,17 +1303,21 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
                          substr(State, 1, 2) AS ST,
                          {long_output}
 
+                         "┃" AS "c",
                          NCPUS,
                          printf("%3.0f%%",round(CPUeff, 2)*100) AS "CPUeff",
 
+                         "┃" AS "m",
                          round(AllocMem/1073741824,2) AS MemAllocGiB,
                          round(TotalMem/1073741824,2) AS MemTotGiB,
                          printf("%3.0f%%",round(MemEff,2)*100)  AS MemEff,
 
+                         "┃" AS "g",
                          NGpus,
                          iif(NGpus, printf("%3.0f%%",round(GPUeff,2)*100), NULL) AS GPUeff,
                          iif(NGpus, printf("%4.1f",GPUmem/1073741824), NULL) AS GPUmemGiB,
 
+                         "┃" AS "d",
                          round(TotDiskRead/Elapsed/1048576,2) AS read_MiBps,
                          round(TotDiskWrite/Elapsed/1048576,2) AS write_MiBps
 
