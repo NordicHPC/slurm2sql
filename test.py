@@ -77,7 +77,7 @@ def data3(slurm_version_2011):
 
 def csvdata(data):
     """Convert string CSV to a reader for s2s"""
-    reader = csv.DictReader(StringIO(data.strip()))
+    reader = csv.DictReader(StringIO(data.strip()), skipinitialspace=True)
     return reader
 
 def fetch(db, jobid, field, table='slurm'):
@@ -192,8 +192,8 @@ def test_memeff(db):
 
 def test_gpueff(db):
     data = """
-    JobID,AllocTRES,TRESUsageInTot
-    1,gres/gpu=1,gres/gpuutil=23
+    JobID,Elapsed,AllocTRES,  TRESUsageInTot
+    1,    1:00,   gres/gpu=1, gres/gpuutil=23
     """
     slurm2sql.slurm2sql(db, [], csv_input=csvdata(data))
     print(db.execute('select * from eff;').fetchall())

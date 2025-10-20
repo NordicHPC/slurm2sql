@@ -668,8 +668,8 @@ COLUMNS = {
     #'_NGPU': slurmGPUCount,             # Number of GPUs, extracted from comment field
     '_NGpus': ExtractField('NGpus', 'AllocTRES', 'gres/gpu', float_metric),
     '_GpuType': slurmGPUType,            # gres/gpu:TYPE= from AllocTres
-    '_GpuUtil': ExtractField('GpuUtil', 'TRESUsageInAve', 'gres/gpuutil', float_metric, wrap=lambda x: x/100.), # can be >100 for multi-GPU.
-    '_GpuMem': ExtractField('GpuMem2', 'TRESUsageInAve', 'gres/gpumem', float_metric),
+    '_GpuUtil': ExtractField('GpuUtil', 'TRESUsageInTot', 'gres/gpuutil', float_metric, wrap=lambda x: x/100.), # can be >100 for multi-GPU.
+    '_GpuMem': ExtractField('GpuMem2', 'TRESUsageInTot', 'gres/gpumem', float_metric),
     '_GpuUtilTot': ExtractField('GpuUtilTot', 'TRESUsageInTot', 'gres/gpuutil', float_metric),
     '_GpuMemTot': ExtractField('GpuMemTot',   'TRESUsageInTot', 'gres/gpumem', float_metric),
     }
@@ -940,7 +940,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'ReqTRES, '
                'max(Elapsed) AS Elapsed, '
                'max(NCPUS) AS NCPUS, '
-               'sum(totalcpu)/max(cputime) AS CPUeff, '  # highest TotalCPU is for the whole allocation
+               'sum(totalcpu)/max(cputime) AS CPUeff, '
                'max(cputime) AS cpu_s_reserved, '
                'sum(totalcpu) AS cpu_s_used, '
                'max(ReqMemNode) AS MemReq, '
@@ -952,10 +952,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'max(NGpus) AS NGpus, '
                'max(GPUType) AS GPUType, '
                'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
-               'max(NGpus)*max(Elapsed)*max(GPUutil) AS gpu_s_used, '
-               #'max(GPUutil)/max(NGpus) AS GPUeff, '               # Individual job with highest use (check this)
-               'max(GPUEff) AS GPUeff, '               # Individual job with highest use (check this)
-               'max(GPUMem) AS GPUMem, '
+               'max(NGpus)*max(Elapsed)*max(GpuUtil) AS gpu_s_used, '
+               'sum(GpuUtil*Elapsed)/max(Ngpus*Elapsed) AS GpuEff, '
+               'max(GpuMem) AS GpuMem, '
                'MaxDiskRead, '
                'MaxDiskWrite, '
                'sum(TotDiskRead) as TotDiskRead, '

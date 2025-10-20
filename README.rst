@@ -285,16 +285,17 @@ them.  For other columns, check ``man sacct``.
 
   * ``ReqGPU``: Number of GPUs requested, from ``ReqTRES[gres/gpu]``.
 
-  * ``GpuMem``: From ``TRESUsageInAve[gres/gpumem]``
+  * ``GpuMem``: From ``TRESUsageInTot[gres/gpumem]``
 
-  * ``GpuUtil``: From ``TRESUsageInAve[gres/gpuutil]`` (normalized to
+  * ``GpuUtil``: From ``TRESUsageInTot[gres/gpuutil]`` (normalized to
     fraction 0.0-ngpus).
 
   * ``NGpus``: Number of GPUs from ``AllocTRES[gres/gpu]``.
     Should be the same as ``ReqGPU``, but who knows.
 
-  * ``GpuUtilTot``, ``GpuMemTot``: like above but using the
-    ``TRESUsageInTot`` sacct field.
+  * ``GpuUtilTot``, ``GpuMemTot``: Same as the columns above (before
+    the above columns were made with ``TRESUsageInAve``, these columns
+    saved for the time being for backwards compatibility).
 
   * ``GpuEff``: From ``TRESUsageInTot[gres/gpuutil]``) / (100 *
     ``AllocTRES[gres/gpu]``).
