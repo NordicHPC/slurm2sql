@@ -246,7 +246,7 @@ them.  For other columns, check ``man sacct``.
   * ``JobIDRawonly``: The integer part of the Raw JobID (so this is
     different for each job in an aray).
 
-  * ``ArrayTaskID``: As used above.  Integer on null.
+  * ``ArrayTaskID``: As used above.  Integer or null.
 
   * ``JobStep``: Job step - only.  If you SQL filter for ``StepID is
     null`` you get only the main allocations.  String.

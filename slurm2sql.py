@@ -510,12 +510,24 @@ class slurmMemEff2(linefunc):
 RE_TRES_CPU = re.compile(rf'\bcpu=([^,]*)\b')
 class slurmCPUEff(linefunc):
     # This matches the seff tool currently:
-    # https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
-    # Update 2025-10-20: on our slurm TotalCPU is now empty, so we get the CPU value from TRESUsageInTot
+    #   https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
+    # Update 2025-10-20: on our slurm TotalCPU is now empty, so we get the CPU value from:
+    #   TRESUsageInTot[cpu] / (AllocTRES[cpu] * Elapsed):
+    #   This is is computed for each job step individually, not for
+    #   the whole job, since the relevant values are only on the job
+    #   steps.  For job efficiency use the `eff` table.
     type = 'real'
     @staticmethod
     def calc(row):
-        if not ('Elapsed' in row and 'TRESUsageInTot' in row):
+        # This is roughly the old way (code won't work):
+        #if 'TotalCPU' in row:
+        #    walltime = slurmtime(row['Elapsed'])
+        #    try:
+        #        cpueff = slurmtime(row['TotalCPU']) / (walltime * int(row['NCPUS']))
+        #        return cpueff
+        #    except ZeroDivisionError:
+        #        return float('nan')
+        if not ('Elapsed' in row and 'AllocTRES' in row and 'TRESUsageInTot' in row):
             return
         walltime = slurmtime(row['Elapsed'])
         if not walltime: return None
