@@ -162,6 +162,18 @@ def test_cpueff(db):
     assert fetch(db, 1, 'TotalCPU') == 1500
     assert fetch(db, 1, 'CPUeff', table='eff') == 0.5
 
+def test_memeff(db):
+    data = """
+    JobID,AllocTRES,TRESUsageInTot
+    1,mem=1000K,mem=500K
+    2,mem=0K,mem=0K
+    """
+    slurm2sql.slurm2sql(db, [], csv_input=csvdata(data))
+    print(db.execute('select * from eff;').fetchall())
+    assert fetch(db, 1, 'Memeff', table='eff') == 0.5
+    assert fetch(db, 2, 'Memeff', table='eff') == None
+
+
 def test_gpueff(db):
     data = """
     JobID,AllocTRES,TRESUsageInTot

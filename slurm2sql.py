@@ -502,7 +502,9 @@ class slurmMemEff2(linefunc):
         m_used = RE_TRES_MEM.search(row['TRESUsageInTot'])
         m_alloc = RE_TRES_MEM.search(row['AllocTRES'])
         if m_alloc and m_used:
-            return float_bytes(m_used.group(1)) / float_bytes(m_alloc.group(1))
+            alloc = float_bytes(m_alloc.group(1))
+            if alloc == 0:  return None
+            return float_bytes(m_used.group(1)) / alloc
         return None
 
 
