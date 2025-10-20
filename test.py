@@ -153,14 +153,30 @@ def test_queuetime(db, data1):
 #
 def test_cpueff(db):
     data = """
-    JobID,CPUTime,TotalCPU
-    1,50:00,25:00
+    JobID, CPUTime, TotalCPU, TRESUsageInTot
+    1,     50:00,   25:00,    cpu=00:25:00
     """
     slurm2sql.slurm2sql(db, [], csv_input=csvdata(data))
     print(db.execute('select * from eff;').fetchall())
     assert fetch(db, 1, 'CPUTime') == 3000
     assert fetch(db, 1, 'TotalCPU') == 1500
     assert fetch(db, 1, 'CPUeff', table='eff') == 0.5
+
+def test_cpueff_steps(db):
+    data = """
+    JobID,CPUTime,TotalCPU,TRESUsageInTot
+    1,   50:00, 02:00,
+    1.1, 25:00, 24:00, cpu=00:25:00
+    1.2, 25:00, 24:00, cpu=00:25:00
+    """
+    slurm2sql.slurm2sql(db, [], csv_input=csvdata(data))
+    print(db.execute('select * from eff;').fetchall())
+    #assert fetch(db, 1, 'CPUTime') == 3000
+    #assert fetch(db, 1, 'TotalCPU') == 1500
+    assert fetch(db, 1, 'CPUeff', table='eff') == 1.0
+    assert fetch(db, 1, 'cpu_s_reserved', table='eff') == 3000
+    assert fetch(db, 1, 'cpu_s_used', table='eff') == 3000
+
 
 def test_memeff(db):
     data = """
@@ -231,14 +247,14 @@ def test_sacct(db, capsys):
 #
 def test_seff(db, capsys):
     data = """
-    JobID,Start,End,CPUTime,TotalCPU
-    111,1970-01-01T00:00:00,1970-01-01T00:50:00,50:00,25:00
-    111.2,,,,25:00
+    JobID, Start,               End,                 Elapsed, CPUTime, TotalCPU,TRESUsageInTot
+    111,   1970-01-01T00:00:00, 1970-01-01T00:50:00, 50:00,   50:00,        ,
+    111.2,                    ,                    ,      ,        ,   25:00,   cpu=00:25:00
     """
     slurm2sql.seff_cli(argv=[], csv_input=csvdata(data))
-    captured = capsys.readouterr()
-    assert '111' in captured.out
-    assert '50%' in captured.out
+    captured = capsys.readouterr().out
+    assert '111' in captured
+    assert '50%' in captured
 
 def test_seff_mem(db, capsys):
     data = """

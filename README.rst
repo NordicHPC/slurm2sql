@@ -201,6 +201,9 @@ percentages, and *unixtime*.
 Columns which are the same in raw ``sacct`` output aren't documented
 specifically here (but note the default units above).
 
+The syntax ``ColumnName[name]`` means the ``name=`` value from the
+given column name.
+
 Below are some notable columns which do not exist in sacct (for the
 rest, check out the `sacct manual page <https://slurm.schedmd.com/sacct.html#lbAF>`_).  It's good
 to verify that any of our custom columns make sense before trusting
@@ -252,13 +255,23 @@ them.  For other columns, check ``man sacct``.
     stripped out and give invalid data.  File an issue and this will
     be added.
 
+* **CPU related**
+
+  * ``TotalCPU`` is the total CPU seconds used (time × number of
+    CPUs).  In our latest slurm, the raw column is zero for job steps,
+    so this is now extracted from ``TRESUsageInTot[cpu]``
+
+  * ``CPUEff``: CPU efficiency (0.0-1.0).  All the same caveats as above
+    apply: test before trusting.  This is calculated as
+    ``TRESUsageInTot[cpu]/(AllocTRES[cpu]*Elapsed)``.
+
 * **Memory related**
 
-  * ``AllocMem``: The ``mem=`` value from ``AllocTRES`` field.  You
-    probably want to use this.
+  * ``AllocMem``: The ``AllocTRES[mem]`` field.  You probably want to
+    use this.
 
-  * ``TotalMem``: The ``mem=`` value from ``TRESUsageInTot`` field.
-    You probably want to use this.
+  * ``TotalMem``: The ``TRESUsageInTot[mem]`` field.  You probably
+    want to use this.
 
   * ``ReqMem``: The raw slurm value from the ReqMem column.
 
@@ -268,25 +281,23 @@ them.  For other columns, check ``man sacct``.
   * ``MemEff``: Computed ``TotalMem / AllocMem``.
 
 * **GPU information.**  These use values from the ``TRESUsageInAve``
-  fields in modern Slurm
+  fields in modern Slurm:
 
-  * ``ReqGPU``: Number of GPUs requested.  Extracted from ``ReqTRES``.
+  * ``ReqGPU``: Number of GPUs requested, from ``ReqTRES[gres/gpu]``.
 
-  * ``GpuMem``: ``gres/gpumem`` from ``TRESUsageInAve``
+  * ``GpuMem``: From ``TRESUsageInAve[gres/gpumem]``
 
-  * ``GpuUtil``: ``gres/gpuutil`` (fraction 0.0-1.0).
+  * ``GpuUtil``: From ``TRESUsageInAve[gres/gpuutil]`` (normalized to
+    fraction 0.0-ngpus).
 
-  * ``NGpus``: Number of GPUs from ``gres/gpu`` in ``AllocTRES``.
+  * ``NGpus``: Number of GPUs from ``AllocTRES[gres/gpu]``.
     Should be the same as ``ReqGPU``, but who knows.
 
   * ``GpuUtilTot``, ``GpuMemTot``: like above but using the
     ``TRESUsageInTot`` sacct field.
 
-  * ``GpuEff``: ``gres/gpuutil`` (from ``TRESUsageInTot``) / (100 *
-    ``gres/gpu`` (from ``AllocTRES``).
-
-* ``CPUEff``: CPU efficiency (0.0-1.0).  All the same caveats as above
-  apply: test before trusting.
+  * ``GpuEff``: From ``TRESUsageInTot[gres/gpuutil]``) / (100 *
+    ``AllocTRES[gres/gpu]``).
 
 * And more, see the code for now.
 
@@ -298,11 +309,9 @@ accounting database that are hardest to remember:
 * ``CPUTime``: Reserved CPU time (Elapsed * number of CPUs).  CPUEff ≈
   TotalCPU/CPUTime = TotalCPU/(NCPUs x Elapsed)
 
-* ``TotalCPU``: SystemCPU + TotalCPU, seconds of productive work.
-
 The ``eff`` table adds the following:
 
-* ``CPUEff``: Highest CPUEff for any job step
+* ``CPUEff``: sum(cpu usage over steps) / allocated (cpu usage over steps)
 
 * ``MemEff``: Highest MemEff for any job step
 

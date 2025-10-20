@@ -507,19 +507,26 @@ class slurmMemEff2(linefunc):
             return float_bytes(m_used.group(1)) / alloc
         return None
 
-
+RE_TRES_CPU = re.compile(rf'\bcpu=([^,]*)\b')
 class slurmCPUEff(linefunc):
     # This matches the seff tool currently:
     # https://github.com/SchedMD/slurm/blob/master/contribs/seff/seff
+    # Update 2025-10-20: on our slurm TotalCPU is now empty, so we get the CPU value from TRESUsageInTot
     type = 'real'
     @staticmethod
     def calc(row):
-        if not ('Elapsed' in row and 'TotalCPU' in row and 'NCPUS' in row):
+        if not ('Elapsed' in row and 'TRESUsageInTot' in row):
             return
         walltime = slurmtime(row['Elapsed'])
         if not walltime: return None
+        m_cpu_alloc = RE_TRES_CPU.search(row['AllocTRES'])
+        if not m_cpu_alloc: return None
+        m_cpu_used = RE_TRES_CPU.search(row['TRESUsageInTot'])
+        if not m_cpu_used: return None
+        cpu_alloc = int_metric(m_cpu_alloc.group(1))
+        cpu_used = slurmtime(m_cpu_used.group(1))
         try:
-            cpueff = slurmtime(row['TotalCPU']) / (walltime * int(row['NCPUS']))
+            cpueff = cpu_used / (walltime * cpu_alloc)
         except ZeroDivisionError:
             return float('nan')
         return cpueff
@@ -621,7 +628,7 @@ COLUMNS = {
     'ReqCPUS': nullint,                 # Requested CPUs
     'AllocCPUS': nullint,               # === NCPUS
     'CPUTime': slurmtime,               # = Elapsed * NCPUS    (= CPUTimeRaw)  (not how much used)
-    'TotalCPU': slurmtime,              # = Elapsed * NCPUS * efficiency
+    'TotalCPU': ExtractField("TotalCPU", "TRESUsageInTot", "cpu", slurmtime),   # = Elapsed * NCPUS * efficiency
     'UserCPU': slurmtime,               #
     'SystemCPU': slurmtime,             #
     '_CPUEff': slurmCPUEff,             # CPU efficiency, should be same as seff
@@ -933,9 +940,9 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'ReqTRES, '
                'max(Elapsed) AS Elapsed, '
                'max(NCPUS) AS NCPUS, '
-               'max(totalcpu)/max(cputime) AS CPUeff, '  # highest TotalCPU is for the whole allocation
+               'sum(totalcpu)/max(cputime) AS CPUeff, '  # highest TotalCPU is for the whole allocation
                'max(cputime) AS cpu_s_reserved, '
-               'max(totalcpu) AS cpu_s_used, '
+               'sum(totalcpu) AS cpu_s_used, '
                'max(ReqMemNode) AS MemReq, '
                'max(AllocMem) AS AllocMem, '
                'max(TotalMem) AS TotalMem, '
