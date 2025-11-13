@@ -29,6 +29,8 @@ else:
     ch.setLevel(logging.DEBUG)
     LOG.addHandler(ch)
 
+# https://slurm.schedmd.com/sacct.html#SECTION_ENVIRONMENT-VARIABLES
+SLURM_TIME_FORMAT = os.environ.get('SLURM_TIME_FORMAT', '%Y-%m-%dT%H:%M:%S')
 
 #
 # First, many converter functions/classes which convert strings to
@@ -70,7 +72,7 @@ def unixtime(x):
     if not x:           return None
     if x == 'Unknown':  return None
     if x == 'None':  return None
-    return time.mktime(time.strptime(x, '%Y-%m-%dT%H:%M:%S'))
+    return time.mktime(time.strptime(x, SLURM_TIME_FORMAT))
 
 @settype('int')
 def datetime_timestamp(dt):
@@ -112,7 +114,7 @@ def slurm_timestamp(x):
     """
     if not isinstance(x, datetime.datetime):
         x = datetime.datetime.fromtimestamp(x - 5)
-    return x.strftime('%Y-%m-%dT%H:%M:%S')
+    return x.strftime(SLURM_TIME_FORMAT)
 
 @settype('text')
 def str_unknown(x):
@@ -214,7 +216,7 @@ class slurmDefaultTime(linefunc):
             return row['End']
         if row['Start'] != 'Unknown':
             # Currently running, return current time since it's constantly updated.
-            return time.strftime("%Y-%m-%dT%H:%M:%S")
+            return time.strftime(SLURM_TIME_FORMAT)
         # Return submit time, since there is nothing else.
         return row['Submit']
 
@@ -838,9 +840,9 @@ def get_history(db, sacct_filter=['-a'],
     return errors
 
 
-def sacct(slurm_cols, sacct_filter):
+def sacct(slurm_cols, sacct_filter, sacct_delimiter):
     cmd = ['sacct', '-o', ','.join(slurm_cols), '-P',# '--units=K',
-           '--delimiter=;|;',
+           '--delimiter=' + sacct_delimiter,
            #'--allocations',  # no job steps, only total jobs, but doesn't show used resources.
            ] + list(sacct_filter)
     #LOG.debug(' '.join(cmd))
@@ -861,7 +863,7 @@ def create_indexes(db):
     db.commit()
 
 
-def sacct_iter(slurm_cols, sacct_filter, errors=[0], raw_sacct=None):
+def sacct_iter(slurm_cols, sacct_filter, sacct_delimiter, errors=[0], raw_sacct=None):
     """Iterate through sacct, returning rows as dicts"""
     # Read data from sacct, or interpert sacct_filter directly as
     # testdata if it has the attribute 'testdata'
@@ -870,7 +872,7 @@ def sacct_iter(slurm_cols, sacct_filter, errors=[0], raw_sacct=None):
         lines = raw_sacct
     else:
         # This is a real filter, read data
-        lines = sacct(slurm_cols, sacct_filter)
+        lines = sacct(slurm_cols, sacct_filter, sacct_delimiter)
 
     # We don't use the csv module because the csv can be malformed.
     # In particular, job name can include newlines(!).  TODO: handle job
@@ -879,14 +881,14 @@ def sacct_iter(slurm_cols, sacct_filter, errors=[0], raw_sacct=None):
     for i, rawline in enumerate(lines):
         if i == 0:
             # header
-            header = rawline.strip().split(';|;')
+            header = rawline.strip().split(sacct_delimiter)
             continue
         # Handle fields that have embedded newline (JobName).  If we
         # have too few fields, save the line and continue.
         if line_continuation:
             rawline = line_continuation + rawline
             line_continuation = None
-        line = rawline.strip().split(';|;')
+        line = rawline.strip().split(sacct_delimiter)
         if len(line) < len(slurm_cols):
             line_continuation = rawline
             continue
@@ -902,7 +904,7 @@ def sacct_iter(slurm_cols, sacct_filter, errors=[0], raw_sacct=None):
 
 
 def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
-              raw_sacct=None, verbose=False,
+              raw_sacct=None, sacct_delimiter=';|;', verbose=False,
               csv_input=None):
     """Import one call of sacct to a sqlite database.
 
@@ -910,13 +912,18 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     open sqlite3 database file object.
 
     sacct_filter:
-    filter for sacct, list of arguments.  This should only be row
+    Filter for sacct, list of arguments.  This should only be row
     filters, such as ['-a'], ['-S' '2019-08-01'], and so on.  The
     argument should be a list.  You can't currently filter what columns
     are selected.
 
     raw_sacct: If given, do not run sacct but use this as the input
     (file-like object)
+
+    sacct_delimiter: 
+    Delimiter used to seperate slurm records. Since users may include arbitrary
+    job names or submit lines care must be taken to distinctly seperate records.
+    A good single character option is '\x1F' (see https://github.com/SixArm/usv).
 
     Returns: the number of errors
     """
@@ -990,7 +997,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                 yield row
         rows = rows()  # activate the generator
     else:
-        rows = sacct_iter(slurm_cols, sacct_filter, raw_sacct=raw_sacct, errors=errors)
+        rows = sacct_iter(slurm_cols, sacct_filter, sacct_delimiter, raw_sacct=raw_sacct, errors=errors)
 
     for i, row in enumerate(rows):
 
