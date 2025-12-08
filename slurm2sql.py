@@ -25,7 +25,7 @@ try:
 except ImportError:
     HAS_DUCKDB = False
 
-__version__ = '0.9.9' # Bumped version for DuckDB support
+__version__ = '0.9.8' 
 
 LOG = logging.getLogger('slurm2sql')
 LOG.setLevel(logging.DEBUG)
