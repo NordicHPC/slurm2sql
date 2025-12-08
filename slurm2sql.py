@@ -2,7 +2,7 @@
 
 # pylint: disable=too-few-public-methods, missing-docstring
 
-"""Import Slurm accounting database from sacct to sqlite3 database
+"""Import Slurm accounting database from sacct to sqlite3 or duckdb database
 """
 
 from __future__ import division, print_function
@@ -18,7 +18,14 @@ import subprocess
 import sys
 import time
 
-__version__ = '0.9.8'
+# Try importing duckdb, but don't crash if not present unless requested
+try:
+    import duckdb
+    HAS_DUCKDB = True
+except ImportError:
+    HAS_DUCKDB = False
+
+__version__ = '0.9.9' # Bumped version for DuckDB support
 
 LOG = logging.getLogger('slurm2sql')
 LOG.setLevel(logging.DEBUG)
@@ -29,6 +36,47 @@ else:
     ch.setLevel(logging.DEBUG)
     LOG.addHandler(ch)
 
+
+# --- Helper to handle DB differences ---
+def connect_db(filename, use_duckdb=False, read_only=False):
+    if use_duckdb:
+        if not HAS_DUCKDB:
+            LOG.error("DuckDB requested but the 'duckdb' python module is not installed.")
+            sys.exit(1)
+        # DuckDB connection
+        if filename == ':memory:':
+            return duckdb.connect(database=':memory:', read_only=read_only)
+        return duckdb.connect(database=filename, read_only=read_only)
+    else:
+        # SQLite connection
+        return sqlite3.connect(filename)
+
+def get_sql_dialect(db):
+    """Returns a dict of SQL snippets depending on whether db is sqlite or duckdb."""
+    is_duckdb = False
+    if HAS_DUCKDB and isinstance(db, duckdb.DuckDBPyConnection):
+        is_duckdb = True
+    
+    # Check simple class name for wrapper flexibility or if type check fails
+    if 'duckdb' in str(type(db)).lower():
+        is_duckdb = True
+
+    if is_duckdb:
+        return {
+            'type': 'duckdb',
+            'unix_to_datetime': "strftime(to_timestamp({col}), '%Y-%m-%d %H:%M:%S')",
+            'unix_to_shortdate': "strftime(to_timestamp({col}), '%m-%d_%H:%M')",
+            'insert_replace': 'INSERT OR REPLACE', # DuckDB supports this for compatibility
+            'regexp_match': "regexp_matches({col}, {pattern})" # DuckDB syntax
+        }
+    else:
+        return {
+            'type': 'sqlite',
+            'unix_to_datetime': "datetime({col}, 'unixepoch')",
+            'unix_to_shortdate': "strftime('%m-%d_%H:%M', {col}, 'unixepoch')",
+            'insert_replace': 'INSERT OR REPLACE',
+            'regexp_match': "{col} REGEXP {pattern}" # SQLite needs custom function usually, simplistic here
+        }
 
 #
 # First, many converter functions/classes which convert strings to
@@ -64,7 +112,7 @@ def nullstr_strip(x):
     """str or None"""
     return str(x).strip() if x else None
 
-@settype('int')
+@settype('bigint')
 def unixtime(x):
     """Timestamp in local time, converted to unixtime"""
     if not x:           return None
@@ -72,7 +120,7 @@ def unixtime(x):
     if x == 'None':  return None
     return time.mktime(time.strptime(x, '%Y-%m-%dT%H:%M:%S'))
 
-@settype('int')
+@settype('bigint')
 def datetime_timestamp(dt):
     """Convert a datetime object to unixtime
 
@@ -146,7 +194,7 @@ def float_bytes(x, convert=float):
         return convert(x[:-1]) * unit_value_binary(unit)
     return convert(x)
 
-@settype('int')
+@settype('bigint')
 def int_bytes(x):
     return float_bytes(x, convert=lambda x: int(float(x)))
 
@@ -159,7 +207,7 @@ def float_metric(x, convert=float):
         return convert(x[:-1]) * unit_value_metric(unit)
     return convert(x)
 
-@settype('int')
+@settype('bigint')
 def int_metric(x):
     return float_metric(x, convert=lambda x: int(float(x)))
 
@@ -219,26 +267,26 @@ class slurmDefaultTime(linefunc):
         return row['Submit']
 
 class slurmDefaultTimeTS(linefunc):
-    type = 'int'
+    type = 'bigint'
     @staticmethod
     def calc(row):
         """Lastest active time (see above), unixtime."""
         return unixtime(slurmDefaultTime.calc(row))
 
 class slurmSubmitTS(linefunc):
-    type = 'int'
+    type = 'bigint'
     @staticmethod
     def calc(row):
         return unixtime(row['Submit'])
 
 class slurmStartTS(linefunc):
-    type = 'int'
+    type = 'bigint'
     @staticmethod
     def calc(row):
         return unixtime(row['Start'])
 
 class slurmEndTS(linefunc):
-    type = 'int'
+    type = 'bigint'
     @staticmethod
     def calc(row):
         return unixtime(row['End'])
@@ -700,6 +748,8 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None, csv_input=None):
     """Parse arguments and use the other API"""
     parser = argparse.ArgumentParser(usage='slurm2sql DBNAME [other args] [SACCT_FILTER]')
     parser.add_argument('db', help="Database filename to create or update")
+    parser.add_argument('--duckdb', action='store_true',
+                        help="Use DuckDB instead of SQLite")
     parser.add_argument('--update', '-u', action='store_true',
                         help="If given, don't delete existing database and "
                              "instead insert or update rows")
@@ -747,7 +797,7 @@ def main(argv=sys.argv[1:], db=None, raw_sacct=None, csv_input=None):
         # Delete existing database unless --update/-u is given
         if not (args.update or args.history_resume) and os.path.exists(args.db):
             os.unlink(args.db)
-        db = sqlite3.connect(args.db)
+        db = connect_db(args.db, use_duckdb=args.duckdb)
 
     # If --history-days, get just this many days history
     if (args.history is not None
@@ -800,7 +850,7 @@ def get_history(db, sacct_filter=['-a'],
     if history_resume:
         try:
             start = get_last_timestamp(db)
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, duckdb.CatalogException):
             import traceback
             traceback.print_exc()
             print()
@@ -857,7 +907,10 @@ def create_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_start ON slurm (User, Start)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_time ON slurm (Time)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_slurm_user_time ON slurm (User, Time)')
-    db.execute('ANALYZE;')
+    # ANALYZE works differently or is auto in DuckDB, but standard SQL supports it often.
+    # SQLite uses it. DuckDB uses it mostly internally.
+    if 'duckdb' not in str(type(db)).lower():
+        db.execute('ANALYZE;')
     db.commit()
 
 
@@ -904,10 +957,10 @@ def sacct_iter(slurm_cols, sacct_filter, errors=[0], raw_sacct=None):
 def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
               raw_sacct=None, verbose=False,
               csv_input=None):
-    """Import one call of sacct to a sqlite database.
+    """Import one call of sacct to a sqlite/duckdb database.
 
     db:
-    open sqlite3 database file object.
+    open sqlite3 or duckdb database file object.
 
     sacct_filter:
     filter for sacct, list of arguments.  This should only be row
@@ -921,7 +974,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     Returns: the number of errors
     """
     columns = COLUMNS.copy()
-
+    dialect = get_sql_dialect(db)
 
     def infer_type(cd):
         if hasattr(cd, 'type'): return cd.type
@@ -934,47 +987,55 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
     db.execute('CREATE TABLE IF NOT EXISTS meta_slurm_lastupdate (id INTEGER PRIMARY KEY, update_time REAL)')
     db.execute('CREATE VIEW IF NOT EXISTS allocations AS select * from slurm where JobStep is null;')
     db.execute('CREATE VIEW IF NOT EXISTS steps AS select * from slurm where JobStep is not null;')
-    db.execute('CREATE VIEW IF NOT EXISTS eff AS select '
-               'JobIDnostep AS JobID, '
-               'max(User) AS User, '
-               'max(Partition) AS Partition, '
-               'max(JobName) AS JobName, '
-               'group_concat(SubmitLine, \'\n\') AS SubmitLines, '
-               'Account, '
-               '(SELECT State FROM allocations AS allocations2 WHERE allocations2.jobid=slurm1.JobIDnostep) AS State, '
-               #'State AS State, '
-               'NodeList, '
-               'Time, '
-               'TimeLimit, '
-               'min(Start) AS Start, '
-               'max("End") AS "End", '
-               'max(NNodes) AS NNodes, '
-               'ReqTRES, '
-               'max(Elapsed) AS Elapsed, '
-               'max(NCPUS) AS NCPUS, '
-               'sum(totalcpu)/max(cputime) AS CPUeff, '
-               'max(cputime) AS cpu_s_reserved, '
-               'sum(totalcpu) AS cpu_s_used, '
-               'max(ReqMemNode) AS MemReq, '
-               'max(AllocMem) AS AllocMem, '
-               'max(TotalMem) AS TotalMem, '
-               'max(MaxRSS) AS MaxRSS, '
-               'max(MemEff) AS MemEff, '
-               'max(AllocMem*Elapsed) AS mem_s_reserved, ' # highest of any job
-               'max(NGpus) AS NGpus, '
-               'max(GPUType) AS GPUType, '
-               'max(NGpus)*max(Elapsed) AS gpu_s_reserved, '
-               'max(NGpus)*max(Elapsed)*max(GpuUtil) AS gpu_s_used, '
-               'sum(GpuUtil*Elapsed)/max(Ngpus*Elapsed) AS GpuEff, '
-               'max(GpuMem) AS GpuMem, '
-               'MaxDiskRead, '
-               'MaxDiskWrite, '
-               'sum(TotDiskRead) as TotDiskRead, '
-               'sum(TotDiskWrite) as TotDiskWrite '
-               'FROM slurm AS slurm1 GROUP BY JobIDnostep')
+    
+    # We construct the View SQL dynamically to support both SQLite and DuckDB date functions
+    eff_view_sql = 'CREATE VIEW IF NOT EXISTS eff AS select ' \
+               'JobIDnostep AS JobID, ' \
+               'max(User) AS User, ' \
+               'max(Partition) AS Partition, ' \
+               'max(JobName) AS JobName, ' \
+               'group_concat(SubmitLine, \'\n\') AS SubmitLines, ' \
+               'group_concat(Account) As Account, ' \
+               '(SELECT State FROM allocations AS allocations2 WHERE allocations2.jobid=slurm1.JobIDnostep) AS State, ' \
+               'group_concat(NodeList) AS NodeList, ' \
+               'max(Time), ' \
+               'max(TimeLimit), ' \
+               'min(Start) AS Start, ' \
+               'max("End") AS "End", ' \
+               'max(NNodes) AS NNodes, ' \
+               'max(ReqTRES) AS ReqTRES, ' \
+               'max(Elapsed) AS Elapsed, ' \
+               'max(NCPUS) AS NCPUS, ' \
+               'sum(totalcpu)/max(cputime) AS CPUeff, ' \
+               'max(cputime) AS cpu_s_reserved, ' \
+               'sum(totalcpu) AS cpu_s_used, ' \
+               'max(ReqMemNode) AS MemReq, ' \
+               'max(AllocMem) AS AllocMem, ' \
+               'max(TotalMem) AS TotalMem, ' \
+               'max(MaxRSS) AS MaxRSS, ' \
+               'max(MemEff) AS MemEff, ' \
+               'max(AllocMem*Elapsed) AS mem_s_reserved, ' \
+               'max(NGpus) AS NGpus, ' \
+               'max(GPUType) AS GPUType, ' \
+               'max(NGpus)*max(Elapsed) AS gpu_s_reserved, ' \
+               'max(NGpus)*max(Elapsed)*max(GpuUtil) AS gpu_s_used, ' \
+               'sum(GpuUtil*Elapsed)/max(Ngpus*Elapsed) AS GpuEff, ' \
+               'max(GpuMem) AS GpuMem, ' \
+               'max(MaxDiskRead) AS MaxDiskRead, ' \
+               'max(MaxDiskWrite) AS MaxDiskWrite, ' \
+               'sum(TotDiskRead) as TotDiskRead, ' \
+               'sum(TotDiskWrite) as TotDiskWrite ' \
+               'FROM slurm AS slurm1 GROUP BY JobIDnostep'
+    
+    db.execute(eff_view_sql)
     #db.execute('PRAGMA journal_mode = WAL;')
     db.commit()
-    c = db.cursor()
+    
+    # DuckDB cursor is the connection itself mostly, but we simulate standard behavior
+    if dialect['type'] == 'duckdb':
+        c = db
+    else:
+        c = db.cursor()
 
     slurm_cols = tuple(c for c in list(columns.keys()) + COLUMNS_EXTRA if not c.startswith('_'))
 
@@ -1007,11 +1068,13 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                                         else columns[k].calc(row))
                          for k in columns.keys()}
 
-        c.execute('INSERT %s INTO slurm (%s) VALUES (%s)'%(
+        # Construct INSERT statement (DuckDB supports INSERT OR REPLACE like SQLite)
+        sql = 'INSERT %s INTO slurm (%s) VALUES (%s)'%(
                   'OR REPLACE' if update else '',
                   ','.join('"'+x+'"' for x in processed_row.keys()),
-                  ','.join(['?']*len(processed_row))),
-            tuple(processed_row.values()))
+                  ','.join(['?']*len(processed_row)))
+        
+        c.execute(sql, tuple(processed_row.values()))
 
         # Committing every so often allows other queries to succeed
         if i%10000 == 0:
@@ -1059,6 +1122,9 @@ def args_to_sql_where(args):
     where = [ ]
     if getattr(args, 'user', None):
         where.append('and user=:user')
+        # Note: SQLite uses :user, DuckDB supports $user or ? usually. 
+        # But python DB-API mapping for duckdb supports named parameters? 
+        # Standard DuckDB python client supports it.
     if getattr(args, 'partition', None):
         where.append("and Partition like '%'||:partition||'%'")
     return ' '.join(where)
@@ -1074,15 +1140,17 @@ def import_or_open_db(args, sacct_filter, csv_input=None):
     db: filename of a database to open
 
     """
+    use_duckdb = getattr(args, 'duckdb', False)
+    
     if args.db:
-        db = sqlite3.connect(args.db)
+        db = connect_db(args.db, use_duckdb=use_duckdb, read_only=True)
         if sacct_filter:
             LOG.warn("Warning: reading from database.  Any sacct filters are ignored.")
     else:
         # Import fresh
         sacct_filter = args_to_sacct_filter(args, sacct_filter)
         LOG.debug(f'sacct args: {sacct_filter}')
-        db = sqlite3.connect(':memory:')
+        db = connect_db(':memory:', use_duckdb=use_duckdb)
         errors = slurm2sql(db, sacct_filter=sacct_filter,
                            csv_input=getattr(args, 'csv_input', False) or csv_input)
     return db
@@ -1156,6 +1224,8 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
     #                         "here, for example")
     parser.add_argument('--db',
                         help="Read from this DB.  Don't import new data.")
+    parser.add_argument('--duckdb', action='store_true',
+                        help="Use DuckDB instead of SQLite")
     parser.add_argument('--output', '-o', default=SACCT_DEFAULT_FIELDS,
                         help="Fields to output (comma separated list, use '*' for all fields).  NOT safe from SQL injection.  If 'long' then some longer default list")
     parser.add_argument('--format', '-f', default=compact_table(),
@@ -1195,15 +1265,31 @@ def sacct_cli(argv=sys.argv[1:], csv_input=None):
         args.output = SACCT_DEFAULT_FIELDS_LONG
 
     db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
+    dialect = get_sql_dialect(db)
+
+    # Convert default output fields for DuckDB if needed (date functions)
+    output_fields = args.output
+    if dialect['type'] == 'duckdb':
+        # Replace SQLite specific date functions with DuckDB compatible ones
+        # This is a simple string replace for the default fields. 
+        # If user provides custom fields, they must match the DB dialect.
+        output_fields = output_fields.replace("datetime(Start, 'unixepoch')", dialect['unix_to_datetime'].format(col='Start'))
+        output_fields = output_fields.replace("datetime(End, 'unixepoch')", dialect['unix_to_datetime'].format(col='End'))
 
     # If we run sacct, then args.user is set to None so we don't do double filtering here
     where = args_to_sql_where(args)
 
     from tabulate import tabulate
-    cur = db.execute(f'select {args.output} from slurm WHERE true {where}',
+    cur = db.execute(f'select {output_fields} from slurm WHERE true {where}',
                      {'user':args.user, 'partition': args.partition})
-    headers = [ x[0] for x in cur.description ]
-    print(tabulate(cur, headers=headers, tablefmt=args.format))
+    
+    if dialect['type'] == 'duckdb':
+        headers = [ x[0] for x in cur.description ]
+        data = cur.fetchall()
+        print(tabulate(data, headers=headers, tablefmt=args.format))
+    else:
+        headers = [ x[0] for x in cur.description ]
+        print(tabulate(cur, headers=headers, tablefmt=args.format))
 
 
 def seff_cli(argv=sys.argv[1:], csv_input=None):
@@ -1229,6 +1315,8 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
     #                    help="sacct options to filter jobs.  )
     parser.add_argument('--db',
                         help="Read from this DB.  Don't import new data.")
+    parser.add_argument('--duckdb', action='store_true',
+                        help="Use DuckDB instead of SQLite")
     parser.add_argument('--format', '-f', default=compact_table(),
                         help="Output format (see tabulate formats: https://pypi.org/project/tabulate/ (default simple)")
     parser.add_argument('--aggregate-user', action='store_true',
@@ -1272,11 +1360,12 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
     else:
         order_by = ''
 
+    db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
+    dialect = get_sql_dialect(db)
+
     long_output = ''
     if args.long:
-        long_output = "strftime('%m-%d_%H:%M', Start, 'unixepoch') AS Start, strftime('%m-%d_%H:%M', End, 'unixepoch') AS End,"
-
-    db = import_or_open_db(args, sacct_filter, csv_input=csv_input)
+        long_output = f"{dialect['unix_to_shortdate'].format(col='Start')} AS Start, {dialect['unix_to_shortdate'].format(col='End')} AS End,"
 
     # If we run sacct, then args.user is set to None so we don't do double filtering here
     where = args_to_sql_where(args)
@@ -1350,7 +1439,7 @@ def seff_cli(argv=sys.argv[1:], csv_input=None):
         exit(2)
     print(tabulate(data, headers=headers, tablefmt=args.format,
                        colalign=('decimal', 'center', 'decimal', 'center',
-                                 *(['center', 'center'] if long_output else []),  # long output formats if enabled
+                                 *(['center', 'center'] if args.long else []),  # long output formats if enabled
                                  'decimal', 'right', # cpu
                                  'decimal', 'decimal', 'right', # mem
                                  'decimal', 'right', # gpu
