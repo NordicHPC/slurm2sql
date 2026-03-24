@@ -938,7 +938,7 @@ def slurm2sql(db, sacct_filter=['-a'], update=False, jobs_only=False,
                'JobIDnostep AS JobID, '
                'max(User) AS User, '
                'max(Partition) AS Partition, '
-               'max(JobName) AS JobName, '
+               '(SELECT s2.JobName FROM slurm AS s2 WHERE s2.JobIDnostep = slurm1.JobIDnostep AND s2.JobID = s2.JobIDnostep LIMIT 1) AS JobName,'
                'group_concat(SubmitLine, \'\n\') AS SubmitLines, '
                'Account, '
                '(SELECT State FROM allocations AS allocations2 WHERE allocations2.jobid=slurm1.JobIDnostep) AS State, '
