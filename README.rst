@@ -77,10 +77,12 @@ Slurm).
 To resume from where you left off, first run with one of the history
 options.  Then, you can do ``--history-resume`` (no ``-u`` needed) and
 it will continue fetching day-by-day from the time you last fetched.
-You can also run this every day, to first load old historykeep a database updated::
+``--history-resume-or-start=ARG`` will start from ``ARG`` ago if there
+is no history record.
+You can also run this every day, to first create a database from 7
+days ago and then keep a database updated each time it runs::
 
-  slurm2sql.py --history-days=N -u sincejuly.sqlite3 -- -a
-  slurm2sql.py --history-resume sincejuly.sqlite3 -- -a
+  slurm2sql.py --history-resume-or-start=7-0 recent.sqlite3 -- -a
 
 
 ``slurm2sql-sacct``
