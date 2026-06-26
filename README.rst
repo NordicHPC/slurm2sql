@@ -54,10 +54,9 @@ Sample usage::
   slurm2sql.py OUTPUT_DB -- [SACCT_FILTER_OPTIONS]
 
 
-For example, to get all data from July and August (``-S``) for all
-users (``-a``)::
+For example, to get all data from 1 July for all users (``-a``)::
 
-  slurm2sql.py sincejuly.sqlite3 -- -S 2019-07-1 -a
+  slurm2sql.py july1.sqlite3 -- -S 2025-07-01 -E 2025-07-01 -a
 
 
 To get the data from the last *N* days.  This will, day by day, get
